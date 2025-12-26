@@ -1,0 +1,36 @@
+# --- CHUNG CHO CẢ DỰ ÁN ---
+node_modules/
+.DS_Store
+.env*
+!.env.example
+!backend/.env.example
+!frontend/.env.example
+*.log
+dist/
+build/
+coverage/
+
+# --- BACKEND SPECIFIC ---
+backend/dist/
+backend/node_modules/
+backend/build/
+backend/.temp
+backend/.tmp
+
+# --- FRONTEND SPECIFIC (Next.js/React) ---
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/.vercel
+frontend/*.tsbuildinfo
+frontend/next-env.d.ts
+
+# --- IDEs & EDITORS ---
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.sublime-workspace
