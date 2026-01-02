@@ -123,3 +123,194 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* File mapping screen styles */
+.matrix-table {
+  table-layout: auto;
+  border-collapse: collapse;
+  width: 100%;
+  min-width: max-content;
+}
+
+.matrix-table th,
+.matrix-table td {
+  border: 1px solid rgb(226, 232, 240);
+}
+
+.dark .matrix-table th,
+.dark .matrix-table td {
+  border: 1px solid rgb(51, 65, 85);
+}
+
+.vertical-text {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  white-space: nowrap;
+  padding: 12px 4px;
+  min-height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.sticky-header-1 {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: white;
+  box-shadow: inset 0 -2px 0 0 rgb(100, 116, 139);
+}
+
+.dark .sticky-header-1 {
+  background: hsl(var(--background));
+  box-shadow: inset 0 -2px 0 0 rgb(100, 116, 139);
+}
+
+.sticky-header-2 {
+  position: sticky;
+  top: 42px;
+  z-index: 25;
+  background: white;
+  box-shadow: inset 0 -2px 0 0 rgb(100, 116, 139);
+}
+
+.dark .sticky-header-2 {
+  background: hsl(var(--background));
+  box-shadow: inset 0 -2px 0 0 rgb(100, 116, 139);
+}
+
+.sticky-col-0 {
+  position: sticky;
+  left: 0;
+  z-index: 20;
+  background: white;
+  border-right: 1px solid rgb(226, 232, 240);
+}
+
+.dark .sticky-col-0 {
+  background: hsl(var(--background));
+  border-right: 1px solid rgb(51, 65, 85);
+}
+
+.sticky-col-1 {
+  position: sticky;
+  left: 100px;
+  z-index: 15;
+  background: white;
+  border-right: 1px solid rgb(226, 232, 240);
+}
+
+.dark .sticky-col-1 {
+  background: hsl(var(--background));
+  border-right: 1px solid rgb(51, 65, 85);
+}
+
+.sticky-corner-1 {
+  position: sticky;
+  left: 0;
+  top: 0;
+  z-index: 40;
+  background: white;
+  box-shadow: inset 0 -2px 0 0 rgb(100, 116, 139);
+}
+
+.dark .sticky-corner-1 {
+  background: hsl(var(--muted));
+}
+
+.sticky-corner-2 {
+  position: sticky;
+  left: 100px;
+  top: 0;
+  z-index: 40;
+  background: white;
+  box-shadow: inset 0 -2px 0 0 rgb(100, 116, 139);
+}
+
+.dark .sticky-corner-2 {
+  background: hsl(var(--muted));
+}
+
+.instruction-col-header {
+  position: sticky;
+  right: 0;
+  top: 0;
+  z-index: 30;
+  background: white;
+  border-left: 2px solid rgb(226, 232, 240);
+  box-shadow: inset 0 -2px 0 0 rgb(100, 116, 139);
+}
+
+.dark .instruction-col-header {
+  background: hsl(var(--background));
+  border-left: 2px solid rgb(51, 65, 85);
+  box-shadow: inset 0 -2px 0 0 rgb(100, 116, 139);
+}
+
+.instruction-cell {
+  position: sticky;
+  right: 0;
+  z-index: 10;
+  background: white;
+  border-left: 2px solid rgb(226, 232, 240);
+  min-width: 220px;
+}
+
+.dark .instruction-cell {
+  background: hsl(var(--background));
+  border-left: 2px solid rgb(51, 65, 85);
+}
+
+/* Settings table styles */
+.settings-table {
+  table-layout: auto;
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.settings-table th,
+.settings-table td {
+  border: 1px solid rgb(226, 232, 240);
+}
+
+.dark .settings-table th,
+.dark .settings-table td {
+  border: 1px solid rgb(51, 65, 85);
+}
+
+.sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: white;
+  border-bottom: 2px solid rgb(100, 116, 139);
+}
+
+.dark .sticky-header {
+  background: hsl(var(--background));
+  border-bottom: 2px solid rgb(51, 65, 85);
+}
+
+.sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 10;
+  background: white;
+}
+
+.dark .sticky-col {
+  background: hsl(var(--background));
+}
+
+.sticky-col-2 {
+  position: sticky;
+  left: 100px;
+  z-index: 10;
+  background: white;
+}
+
+.dark .sticky-col-2 {
+  background: hsl(var(--background));
+}
