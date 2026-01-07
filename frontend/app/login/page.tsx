@@ -3,22 +3,41 @@
 import type React from "react"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Eye, EyeOff } from "lucide-react"
 import Image from "next/image"
+import { useAuth } from "@/contexts/auth-context"
 
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
-  const [email, setEmail] = useState("")
+  const [userName, setUserName] = useState("")
   const [password, setPassword] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState("")
+  const { login } = useAuth()
+  const router = useRouter()
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    // UI only - no auth logic per requirements
-    console.log("Login attempted with:", { email, password })
+    setError("")
+    setIsLoading(true)
+
+    try {
+      const success = await login(userName, password)
+      if (success) {
+        router.push("/")
+      } else {
+        setError("ユーザー名またはパスワードが正しくありません")
+      }
+    } catch (err: any) {
+      setError(err.message || "ログインに失敗しました。もう一度お試しください。")
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -45,15 +64,15 @@ export default function LoginPage() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">メールアドレス</Label>
+              <Label htmlFor="userName">ユーザー名</Label>
               <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                id="userName"
+                type="text"
+                placeholder="ユーザー名を入力してください"
+                value={userName}
+                onChange={(e) => setUserName(e.target.value)}
                 required
-                autoComplete="email"
+                autoComplete="username"
                 className="w-full"
               />
             </div>
@@ -82,8 +101,19 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <Button type="submit" className="w-full mt-6 text-white" style={{ backgroundColor: "#3B99CB" }}>
-              ログイン
+            {error && (
+              <div className="text-sm text-red-600 bg-red-50 p-3 rounded-md">
+                {error}
+              </div>
+            )}
+
+            <Button 
+              type="submit" 
+              className="w-full mt-6 text-white" 
+              style={{ backgroundColor: "#3B99CB" }}
+              disabled={isLoading}
+            >
+              {isLoading ? "ログイン中..." : "ログイン"}
             </Button>
           </form>
         </CardContent>

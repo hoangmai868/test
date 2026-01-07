@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
 import { X } from "lucide-react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 
 const fieldGroups = [
   {
@@ -28,8 +28,15 @@ const fieldGroups = [
 
 export default function PromptSettingsPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [prompts, setPrompts] = useState<Record<string, string>>({})
   const [outputs, setOutputs] = useState<Record<string, string>>({})
+
+  const backToUploadStep2 = () => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set("step", "2")
+    router.push(`/upload?${params.toString()}`)
+  }
 
   const handlePromptChange = (fieldName: string, value: string) => {
     setPrompts((prev) => ({ ...prev, [fieldName]: value }))
@@ -49,7 +56,7 @@ export default function PromptSettingsPage() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>プロンプト設定</CardTitle>
-            <Button variant="ghost" size="icon" onClick={() => router.push("/upload?step=2")} className="h-9 w-9">
+            <Button variant="ghost" size="icon" onClick={backToUploadStep2} className="h-9 w-9">
               <X className="h-5 w-5" />
             </Button>
           </div>

@@ -13,27 +13,25 @@ import {
 import { User, LogOut, Settings } from "lucide-react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
+import { useAuth } from "@/contexts/auth-context"
 
 export default function Header() {
   const router = useRouter()
-
-  // Mock user data - in production this would come from auth context
-  const user = {
-    name: "田中太郎",
-    email: "tanaka@example.com",
-    role: "管理者",
-    avatar: null,
-  }
+  const { user, logout } = useAuth()
 
   const handleLogout = () => {
+    logout()
     router.push("/login")
+  }
+
+  if (!user) {
+    return null
   }
 
   return (
     <header className="sticky top-0 z-30 w-full border-b bg-white">
       <div className="flex h-16 items-center justify-between px-6">
         <div className="flex items-center gap-3">
-          <Image src="/images/aicross-logo.png" alt="AICross" width={120} height={32} className="h-8 w-auto" />
         </div>
 
         <div className="flex items-center gap-4">

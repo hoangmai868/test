@@ -24,6 +24,12 @@ export function UploadStepper() {
   const currentStepIndex = steps.findIndex((step) => step.step === currentStep)
   const { canAccessStep } = useUploadContext()
 
+  const buildStepHref = (stepValue: string) => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set("step", stepValue)
+    return `/upload?${params.toString()}`
+  }
+
   return (
     <nav aria-label="Progress" className="sticky top-0 z-20 border-b bg-white">
       <ol className="mx-auto grid max-w-7xl grid-cols-3 gap-4 px-6 py-4">
@@ -36,7 +42,7 @@ export function UploadStepper() {
             <li key={step.id} className="relative">
               {isClickable ? (
                 <Link
-                  href={`/upload?step=${step.step}`}
+                  href={buildStepHref(step.step)}
                   className={cn(
                     "group relative flex items-center gap-3 rounded-lg px-4 py-2 transition-colors",
                     isCurrent ? "bg-blue-50" : "hover:bg-gray-50",

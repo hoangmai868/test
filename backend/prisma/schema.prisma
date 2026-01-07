@@ -26,6 +26,12 @@ enum JobFileCategory {
   registry_transcript
 }
 
+enum JobStatus {
+  saved
+  processing
+  completed
+}
+
 model User {
   id        String   @id @default(uuid())
   userName  String?  @map("user_name") @unique
@@ -57,7 +63,7 @@ model Job {
   userId      String         @map("user_id")
   templateId  String         @map("template_id")
   title       String
-  status      String         @default("saved")
+  status      JobStatus      @default(saved)
   templateJson Json          @map("template_json")
   createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz
   updatedAt   DateTime       @updatedAt @map("updated_at") @db.Timestamptz
