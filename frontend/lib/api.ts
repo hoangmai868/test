@@ -151,5 +151,63 @@ export const api = {
 
     return data.data;
   },
+
+  copyJob: async (jobId: string) => {
+    const response = await fetch(`${API_BASE_URL}/jobs/${jobId}/copy`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || 'Failed to copy job');
+    }
+
+    return data.data;
+  },
+
+  downloadJobExcel: async (jobId: string) => {
+    const response = await fetch(`${API_BASE_URL}/jobs/${jobId}/download-excel`, {
+      method: 'GET',
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || 'Failed to download Excel file');
+    }
+
+    // Get the blob from response
+    const blob = await response.blob();
+    
+    // Create download link
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    
+    // Get filename from Content-Disposition header or use default
+    const contentDisposition = response.headers.get('Content-Disposition');
+    let filename = `job_${jobId}.xlsx`;
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+      if (filenameMatch && filenameMatch[1]) {
+        filename = filenameMatch[1].replace(/['"]/g, '');
+        // Decode URI component if needed
+        try {
+          filename = decodeURIComponent(filename);
+        } catch (e) {
+          // If decoding fails, use as is
+        }
+      }
+    }
+    
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  },
 };
 
