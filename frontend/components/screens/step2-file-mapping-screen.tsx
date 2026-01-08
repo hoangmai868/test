@@ -31,7 +31,7 @@ interface FileInfo {
   category?: string
 }
 
-interface FileMappingScreenProps {
+interface Step2FileMappingScreenProps {
   uploadedFiles: {
     customerInfo: File[]
     contractDocs: File[]
@@ -73,7 +73,7 @@ const convertSchemaToFieldGroups = (schemaJson: any[]): FieldGroup[] => {
   }))
 }
 
-export default function FileMappingScreen({
+export default function Step2FileMappingScreen({
   uploadedFiles,
   loadedFileInfo,
   fieldMappings,
@@ -81,7 +81,7 @@ export default function FileMappingScreen({
   onBack,
   onNext,
   canProceed,
-}: FileMappingScreenProps) {
+}: Step2FileMappingScreenProps) {
   const router = useRouter()
   const { user } = useAuth()
   const { jobName, setJobName, jobId, setJobId } = useUploadContext()
