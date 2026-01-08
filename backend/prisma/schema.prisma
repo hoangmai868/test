@@ -82,7 +82,7 @@ model JobFile {
   fileName  String?         @map("file_name")
   fileKey   String?         @map("file_key")
   createdAt DateTime        @default(now()) @map("created_at") @db.Timestamptz
-  job       Job             @relation(fields: [jobId], references: [id])
+  job       Job             @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   @@map("jobs_files")
 }
