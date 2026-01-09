@@ -28,6 +28,7 @@ interface JobData {
     fieldName?: string
     fileIds: string[]
     note: string
+    extractedValue: string
   }>
   // Step 3: Reservation settings
   reservationSettings: {
@@ -51,14 +52,43 @@ const transformJobData = (job: any): JobData => {
       .map((f: any) => ({ name: f.fileName || '' })) || [],
   }
 
-  const fieldMappings = Array.isArray(job.templateJson)
-    ? job.templateJson.map((mapping: any) => ({
+  // Handle both grouped and flat formats for templateJson
+  let fieldMappings: Array<{
+    fieldId: string
+    fieldName?: string
+    fileIds: string[]
+    note: string
+    extractedValue: string
+  }> = []
+  
+  if (Array.isArray(job.templateJson) && job.templateJson.length > 0) {
+    // Check if it's the new grouped format
+    const isGroupedFormat = job.templateJson[0]?.groupName !== undefined
+    
+    if (isGroupedFormat) {
+      // Transform from grouped format to flat format
+      job.templateJson.forEach((group: { groupName: string; fields: Array<{ name: string; fileNames: string[]; fileKeys?: string[]; note: string; extractedValue: string }> }) => {
+        group.fields.forEach((field) => {
+          fieldMappings.push({
+            fieldId: field.name,
+            fieldName: field.name,
+            fileIds: field.fileNames || [],
+            note: field.note || '',
+            extractedValue: field.extractedValue || '',
+          })
+        })
+      })
+    } else {
+      // Old flat format (backward compatibility)
+      fieldMappings = job.templateJson.map((mapping: any) => ({
         fieldId: mapping.fieldId || '',
         fieldName: mapping.fieldName || '',
-        fileIds: mapping.fileIds || [],
+        fileIds: mapping.fileIds || mapping.fileNames || [],
         note: mapping.note || '',
+        extractedValue: mapping.extractedValue || '',
       }))
-    : []
+    }
+  }
 
   const totalFiles = uploadedFiles.customerInfo.length + uploadedFiles.contractDocs.length + uploadedFiles.registryDocs.length
   const date = job.createdAt ? new Date(job.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
@@ -91,6 +121,8 @@ export default function TopPage() {
     completed: [],
   })
   const [isLoading, setIsLoading] = useState(true)
+  const [copyingJobId, setCopyingJobId] = useState<string | number | null>(null)
+  const [downloadingJobId, setDownloadingJobId] = useState<string | number | null>(null)
   const router = useRouter()
   const { user } = useAuth()
 
@@ -145,8 +177,30 @@ export default function TopPage() {
     return allJobs.find((job) => job.id === selectedJob) || null
   }
 
-  const handleCopyJob = (jobId: string | number) => {
-    router.push(`/upload?step=1&copyFrom=${jobId}`)
+  const handleCopyJob = async (jobId: string | number) => {
+    try {
+      setCopyingJobId(jobId)
+      const newJob = await api.copyJob(String(jobId))
+      // Redirect to edit page of the newly created job
+      router.push(`/upload?step=1&jobId=${newJob.id}`)
+    } catch (error) {
+      console.error('Failed to copy job:', error)
+      alert('ジョブのコピーに失敗しました: ' + (error instanceof Error ? error.message : 'Unknown error'))
+    } finally {
+      setCopyingJobId(null)
+    }
+  }
+
+  const handleDownloadJob = async (jobId: string | number) => {
+    try {
+      setDownloadingJobId(jobId)
+      await api.downloadJobExcel(String(jobId))
+    } catch (error) {
+      console.error('Failed to download job Excel:', error)
+      alert('Excelファイルのダウンロードに失敗しました: ' + (error instanceof Error ? error.message : 'Unknown error'))
+    } finally {
+      setDownloadingJobId(null)
+    }
   }
 
   const selectedJobData = getSelectedJobData()
@@ -225,13 +279,22 @@ export default function TopPage() {
                                     size="sm"
                                     onClick={(e) => {
                                       e.stopPropagation()
-                                      // Handle download logic here
-                                      console.log("Download job:", job.id)
+                                      handleDownloadJob(job.id)
                                     }}
                                     className="flex-1"
+                                    disabled={downloadingJobId === job.id}
                                   >
-                                    <Download className="mr-1 h-3 w-3" />
-                                    ダウンロード
+                                    {downloadingJobId === job.id ? (
+                                      <>
+                                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                                        ダウンロード中...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Download className="mr-1 h-3 w-3" />
+                                        ダウンロード
+                                      </>
+                                    )}
                                   </Button>
                                   <Button
                                     size="sm"
@@ -241,9 +304,19 @@ export default function TopPage() {
                                       handleCopyJob(job.id)
                                     }}
                                     className="flex-1"
+                                    disabled={copyingJobId === job.id}
                                   >
-                                    <Copy className="mr-1 h-3 w-3" />
-                                    コピー & 編集
+                                    {copyingJobId === job.id ? (
+                                      <>
+                                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                                        コピー中...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Copy className="mr-1 h-3 w-3" />
+                                        コピー & 編集
+                                      </>
+                                    )}
                                   </Button>
                                 </div>
                               )}

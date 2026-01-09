@@ -1,5 +1,5 @@
 import 'dotenv/config'
-import { PrismaService } from '../src/prisma.service'
+import { PrismaService } from '../src/prisma/prisma.service'
 
 // Helper function to remove isParent property from schema
 function removeIsParent(schema: any[]): any[] {
