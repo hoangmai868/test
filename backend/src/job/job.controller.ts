@@ -1,4 +1,4 @@
-import { Controller, Post, Put, Get, Body, Param, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Put, Get, Delete, Query, Body, Param, HttpCode, HttpStatus, BadRequestException } from '@nestjs/common';
 import { JobService } from './job.service';
 import { CreateJobDto } from './dto/create-job.dto';
 import { UpdateJobDto } from './dto/update-job.dto';
@@ -12,6 +12,23 @@ export class JobController {
     private readonly azureBlob: AzureBlobStorageService
   ) {}
 
+  @Get('download-url')
+  async getDownloadUrl(@Query('fileKey') fileKey: string) {
+    if (!fileKey) {
+      throw new BadRequestException('fileKey is required');
+    }
+
+    const blobKey = fileKey.replace(/^\//, '');
+    if (!blobKey) {
+      throw new BadRequestException('fileKey is invalid');
+    }
+
+    const downloadUrl = await this.jobService.generateDownloadUrl(
+      blobKey,
+    );
+    return { downloadUrl };
+  }
+  
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() createJobDto: CreateJobDto) {
@@ -106,6 +123,18 @@ export class JobController {
     }[],
   ) {
     return this.jobService.attachFiles(jobId, files);
+  }
+
+  @Delete(':jobId/files')
+  async deleteJobFiles(
+    @Param('jobId') jobId: string,
+    @Body() body: { fileKeys: string[] },
+  ) {
+    const result = await this.jobService.deleteFiles(jobId, body.fileKeys || []);
+    return {
+      success: true,
+      data: result,
+    };
   }
 }
 

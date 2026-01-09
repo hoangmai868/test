@@ -51,4 +51,30 @@ export class AzureBlobStorageService {
       fileKey,
     };
   }
+
+  async generateDownloadUrl(blobName: string) {
+    const containerClient =
+      this.blobServiceClient.getContainerClient(this.containerName);
+
+    const blobClient = containerClient.getBlobClient(blobName);
+    const sasToken = generateBlobSASQueryParameters(
+      {
+        containerName: this.containerName,
+        blobName,
+        permissions: BlobSASPermissions.parse('r'),
+        expiresOn: new Date(Date.now() + 5 * 60 * 1000),
+      },
+      this.credential,
+    ).toString();
+
+    return `${blobClient.url}?${sasToken}`;
+  }
+
+  async deleteBlob(blobName: string) {
+    const containerClient =
+      this.blobServiceClient.getContainerClient(this.containerName);
+
+    const blobClient = containerClient.getBlobClient(blobName);
+    await blobClient.deleteIfExists();
+  }
 }

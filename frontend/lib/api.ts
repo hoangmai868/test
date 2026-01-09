@@ -120,6 +120,24 @@ export const api = {
     return data.data;
   },
 
+  deleteJobFiles: async (jobId: string, fileKeys: string[]) => {
+    const response = await fetch(`${API_BASE_URL}/jobs/${jobId}/files`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ fileKeys }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || 'Failed to delete files');
+    }
+
+    return data.data;
+  },
+
   getJob: async (jobId: string) => {
     const response = await fetch(`${API_BASE_URL}/jobs/${jobId}`, {
       method: 'GET',
@@ -152,6 +170,22 @@ export const api = {
     }
 
     return data.data;
+  },
+
+  getFileDownloadUrl: async (fileKey: string) => {
+    const response = await fetch(
+      `${API_BASE_URL}/jobs/download-url?fileKey=${encodeURIComponent(
+        fileKey,
+      )}`,
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data?.message || 'Failed to get download URL');
+    }
+
+    return data;
   },
 
   getPresignedUrl: (

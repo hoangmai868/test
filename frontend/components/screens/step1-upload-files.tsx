@@ -15,6 +15,19 @@ import { JobFileCategory, JobFileInput } from "@/types/shared/job-file"
 import { uploadToBlob } from "@/lib/blob-upload"
 import { api } from "@/lib/api"
 
+type CategoryKey = "customerInfo" | "contractDocs" | "registryDocs"
+const CATEGORY_KEYS: CategoryKey[] = ["customerInfo", "contractDocs", "registryDocs"]
+const CATEGORY_SECTIONS: { key: CategoryKey; title: string }[] = [
+  { key: "customerInfo", title: "顧客情報" },
+  { key: "contractDocs", title: "契約書類等" },
+  { key: "registryDocs", title: "登記簿謄本" },
+]
+type CombinedFile = {
+  name: string
+  isLoaded: boolean
+  fileKey?: string
+}
+
 interface Step1UploadFilesProps {
   jobId: string | null
   deletedFiles: {
@@ -110,6 +123,14 @@ export default function Step1UploadFiles({
       }
 
       const files: JobFileInput[] = []
+      const deletedFilesSnapshot = deletedFiles
+      const deletedFileKeys = CATEGORY_KEYS.flatMap((categoryKey) =>
+        Array.from(deletedFilesSnapshot[categoryKey])
+          .map((fileName) =>
+            loadedFileInfo[categoryKey].find((file) => file.name === fileName)?.fileKey,
+          )
+          .filter((fileKey): fileKey is string => Boolean(fileKey)),
+      )
 
       const pushLoadedFiles = (
         categoryKey: 'customerInfo' | 'contractDocs' | 'registryDocs',
@@ -188,6 +209,20 @@ export default function Step1UploadFiles({
       appendSavedFiles('customerInfo', newCustomerFiles)
       appendSavedFiles('contractDocs', newContractFiles)
       appendSavedFiles('registryDocs', newRegistryFiles)
+
+      if (currentJobId && deletedFileKeys.length > 0) {
+        await api.deleteJobFiles(currentJobId, deletedFileKeys)
+        setLoadedFileInfo((prev) => ({
+          customerInfo: prev.customerInfo.filter((file) => !deletedFilesSnapshot.customerInfo.has(file.name)),
+          contractDocs: prev.contractDocs.filter((file) => !deletedFilesSnapshot.contractDocs.has(file.name)),
+          registryDocs: prev.registryDocs.filter((file) => !deletedFilesSnapshot.registryDocs.has(file.name)),
+        }))
+        setDeletedFiles({
+          customerInfo: new Set(),
+          contractDocs: new Set(),
+          registryDocs: new Set(),
+        })
+      }
 
       await api.updateJob(currentJobId, {
         files,
@@ -316,19 +351,45 @@ export default function Step1UploadFiles({
     </Card>
   )
 
-  const getCombinedFiles = (category: "customerInfo" | "contractDocs" | "registryDocs") => {
+  const getCombinedFiles = (category: CategoryKey): CombinedFile[] => {
     const loaded = loadedFileInfo[category]
       .filter(f => !deletedFiles[category].has(f.name))
-      .map(f => ({ name: f.name, isLoaded: true }))
-    const uploaded = uploadedFiles[category].map(f => ({ name: f.name, isLoaded: false }))
+      .map((f) => ({
+        name: f.name,
+        isLoaded: true,
+        fileKey: f.fileKey,
+      }))
+    const uploaded = uploadedFiles[category].map((f) => ({
+      name: f.name,
+      isLoaded: false,
+    }))
     return [...loaded, ...uploaded]
+  }
+
+  const handleFilePreview = async (fileKey?: string) => {
+    if (!fileKey) {
+      return
+    }
+
+    try {
+      const { downloadUrl } = await api.getFileDownloadUrl(fileKey)
+      window.open(downloadUrl, '_blank', 'noopener,noreferrer')
+    } catch (error) {
+      console.error('Failed to open file preview:', error)
+    }
   }
 
   const getTotalFilesCount = () => {
     return (
       loadedFileInfo.customerInfo.length +
       loadedFileInfo.contractDocs.length +
-      loadedFileInfo.registryDocs.length
+      loadedFileInfo.registryDocs.length + 
+      uploadedFiles.customerInfo.length +
+      uploadedFiles.contractDocs.length +
+      uploadedFiles.registryDocs.length -
+      deletedFiles.customerInfo.size -
+      deletedFiles.contractDocs.size -
+      deletedFiles.registryDocs.size
     )
   }
 
@@ -372,100 +433,66 @@ export default function Step1UploadFiles({
             </CardHeader>
             <CardContent>
               <ScrollArea className="max-h-[600px] overflow-y-auto">
-                <div className="space-y-6">
-                  <div>
-                    <h3 className="font-semibold text-sm mb-2 text-slate-700">顧客情報</h3>
-                    {getCombinedFiles("customerInfo").length === 0 ? (
-                      <p className="text-sm text-muted-foreground">ファイルがありません</p>
-                    ) : (
-                      <ul className="space-y-1">
-                        {getCombinedFiles("customerInfo").map((file, index) => (
-                          <li
-                            key={`${file.isLoaded ? 'loaded' : 'new'}-${file.name}`}
-                            className="flex items-start gap-2 text-sm text-slate-600 hover:bg-slate-100 px-2 py-1.5 rounded transition-colors"
+        <div className="space-y-6">
+          {CATEGORY_SECTIONS.map(({ key, title }) => {
+            const combinedFiles = getCombinedFiles(key)
+            return (
+              <div key={key}>
+                <h3 className="font-semibold text-sm mb-2 text-slate-700">{title}</h3>
+                {combinedFiles.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">ファイルがありません</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {combinedFiles.map((file, index) => {
+                      const previewable = Boolean(file.fileKey)
+                      return (
+                        <li
+                          key={`${file.isLoaded ? 'loaded' : 'new'}-${file.name}`}
+                          className="flex items-center gap-2 text-sm text-slate-600 hover:bg-slate-100 px-2 py-1.5 rounded transition-colors"
+                        >
+                          <span
+                            className={`flex-1 break-words text-left ${
+                              previewable ? 'cursor-pointer text-primary hover:underline' : ''
+                            }`}
+                            role={previewable ? 'button' : undefined}
+                            tabIndex={previewable ? 0 : undefined}
+                            onClick={() => previewable && handleFilePreview(file.fileKey)}
+                            onKeyDown={(event) => {
+                              if (
+                                previewable &&
+                                (event.key === 'Enter' || event.key === ' ')
+                              ) {
+                                event.preventDefault()
+                                handleFilePreview(file.fileKey)
+                              }
+                            }}
                           >
-                            <span className="flex-1 break-words">
-                              {index + 1}. {file.name}
-                            </span>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 shrink-0 hover:bg-red-50"
-                              onClick={() => handleUploadedFileDelete("customerInfo", file.name)}
-                              title="ファイルを削除"
-                            >
-                              <Trash2 className="h-4 w-4 text-red-500" />
-                            </Button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-
-                  <div>
-                    <h3 className="font-semibold text-sm mb-2 text-slate-700">契約書類等</h3>
-                    {getCombinedFiles("contractDocs").length === 0 ? (
-                      <p className="text-sm text-muted-foreground">ファイルがありません</p>
-                    ) : (
-                      <ul className="space-y-1">
-                        {getCombinedFiles("contractDocs").map((file, index) => (
-                          <li
-                            key={`${file.isLoaded ? 'loaded' : 'new'}-${file.name}`}
-                            className="flex items-start gap-2 text-sm text-slate-600 hover:bg-slate-100 px-2 py-1.5 rounded transition-colors"
+                            {index + 1}. {file.name}
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 shrink-0 hover:bg-red-50"
+                            onClick={() => handleUploadedFileDelete(key, file.name)}
+                            title="ファイルを削除"
                           >
-                            <span className="flex-1 break-words">
-                              {index + 1}. {file.name}
-                            </span>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 shrink-0 hover:bg-red-50"
-                              onClick={() => handleUploadedFileDelete("contractDocs", file.name)}
-                              title="ファイルを削除"
-                            >
-                              <Trash2 className="h-4 w-4 text-red-500" />
-                            </Button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
+                            <Trash2 className="h-4 w-4 text-red-500" />
+                          </Button>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
+              </div>
+            )
+          })}
 
-                  <div>
-                    <h3 className="font-semibold text-sm mb-2 text-slate-700">登記簿謄本</h3>
-                    {getCombinedFiles("registryDocs").length === 0 ? (
-                      <p className="text-sm text-muted-foreground">ファイルがありません</p>
-                    ) : (
-                      <ul className="space-y-1">
-                        {getCombinedFiles("registryDocs").map((file, index) => (
-                          <li
-                            key={`${file.isLoaded ? 'loaded' : 'new'}-${file.name}`}
-                            className="flex items-start gap-2 text-sm text-slate-600 hover:bg-slate-100 px-2 py-1.5 rounded transition-colors"
-                          >
-                            <span className="flex-1 break-words">
-                              {index + 1}. {file.name}
-                            </span>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 shrink-0 hover:bg-red-50"
-                              onClick={() => handleUploadedFileDelete("registryDocs", file.name)}
-                              title="ファイルを削除"
-                            >
-                              <Trash2 className="h-4 w-4 text-red-500" />
-                            </Button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-
-                  <div className="mt-3 pt-3 border-t">
-                    <p className="text-xs text-muted-foreground text-center">
-                      合計: {getTotalFilesCount()}件
-                    </p>
-                  </div>
-                </div>
+          <div className="mt-3 pt-3 border-t">
+            <p className="text-xs text-muted-foreground text-center">
+              合計: {getTotalFilesCount()}件
+            </p>
+          </div>
+        </div>
               </ScrollArea>
             </CardContent>
           </Card>

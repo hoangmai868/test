@@ -3,11 +3,15 @@ import { PrismaService } from '../prisma.service';
 import { CreateJobDto } from './dto/create-job.dto';
 import { UpdateJobDto } from './dto/update-job.dto';
 import { JobFileCategory } from '@prisma/client';
+import { AzureBlobStorageService } from 'src/azure-blob/azure-blob.service';
 
 
 @Injectable()
 export class JobService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly azureBlobStorage: AzureBlobStorageService,
+  ) {}
 
   async create(createJobDto: CreateJobDto) {
     const { files, ...jobData } = createJobDto;
@@ -188,5 +192,33 @@ export class JobService {
       })),
     });
   }
-}
 
+  async deleteFiles(jobId: string, fileKeys: string[]): Promise<{ count: number }> {
+    if (!fileKeys || fileKeys.length === 0) {
+      return { count: 0 };
+    }
+
+    const deletedBlobNames = fileKeys
+      .map((key) => key?.replace(/^\//, ''))
+      .filter((key): key is string => key.length > 0);
+
+    await Promise.all(
+      deletedBlobNames.map((blobName) =>
+        this.azureBlobStorage.deleteBlob(blobName),
+      ),
+    );
+
+    return this.prisma.jobFile.deleteMany({
+      where: {
+        jobId,
+        fileKey: {
+          in: fileKeys,
+        },
+      },
+    });
+  }
+
+  async generateDownloadUrl(blobName: string) {
+    return this.azureBlobStorage.generateDownloadUrl(blobName);
+  }
+}
