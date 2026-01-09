@@ -11,6 +11,8 @@ import { Label } from "@/components/ui/label"
 import { Upload, Trash2, Home } from "lucide-react"
 import { useUploadContext } from "@/contexts/upload-context"
 import { useAuth } from "@/contexts/auth-context"
+import { JobFileCategory, JobFileInput } from "@/types/shared/job-file"
+import { uploadToBlob } from "@/lib/blob-upload"
 import { api } from "@/lib/api"
 
 interface Step1UploadFilesProps {
@@ -40,6 +42,7 @@ export default function Step1UploadFiles({
     uploadedFiles,
     setUploadedFiles,
     loadedFileInfo,
+    setLoadedFileInfo,
     fieldMappings,
     jobName,
     setJobName,
@@ -81,83 +84,118 @@ export default function Step1UploadFiles({
         }
       }
 
-      const templateJson = fieldMappings
+      let currentJobId = jobId
 
-      const files: Array<{
-        fileName: string
-        fileKey?: string
-        category: 'customer_info' | 'contract_documents' | 'registry_transcript'
-      }> = []
-
-      loadedFileInfo.customerInfo
-        .filter((file) => !deletedFiles.customerInfo.has(file.name))
-        .forEach((file) => {
-          files.push({
-            fileName: file.name,
-            fileKey: file.fileKey,
-            category: 'customer_info',
-          })
-        })
-
-      loadedFileInfo.contractDocs
-        .filter((file) => !deletedFiles.contractDocs.has(file.name))
-        .forEach((file) => {
-          files.push({
-            fileName: file.name,
-            fileKey: file.fileKey,
-            category: 'contract_documents',
-          })
-        })
-
-      loadedFileInfo.registryDocs
-        .filter((file) => !deletedFiles.registryDocs.has(file.name))
-        .forEach((file) => {
-          files.push({
-            fileName: file.name,
-            fileKey: file.fileKey,
-            category: 'registry_transcript',
-          })
-        })
-
-      uploadedFiles.customerInfo.forEach((file) => {
-        files.push({
-          fileName: file.name,
-          category: 'customer_info',
-        })
-      })
-
-      uploadedFiles.contractDocs.forEach((file) => {
-        files.push({
-          fileName: file.name,
-          category: 'contract_documents',
-        })
-      })
-
-      uploadedFiles.registryDocs.forEach((file) => {
-        files.push({
-          fileName: file.name,
-          category: 'registry_transcript',
-        })
-      })
-
-      const jobData = {
+      const baseJobData = {
         userId: user.id,
         templateId: templateIdToUse,
         title: jobName,
-        templateJson,
-        files,
+        templateJson: fieldMappings,
+        files: [],
       }
 
-      if (jobId) {
-        await api.updateJob(jobId, jobData)
-        return jobId
-      } else {
-        const savedJob = await api.createJob(jobData)
+      if (!currentJobId) {
+        const savedJob = await api.createJob(baseJobData)
         setJobId(savedJob.id)
-        return savedJob.id
+        currentJobId = savedJob.id
+      } else {
+        await api.updateJob(currentJobId, {
+          title: jobName,
+          templateJson: fieldMappings,
+        })
       }
-    } catch (error) {
-      console.error("Auto-save failed:", error)
+
+      if (!currentJobId) {
+        return null
+      }
+
+      const files: JobFileInput[] = []
+
+      const pushLoadedFiles = (
+        categoryKey: 'customerInfo' | 'contractDocs' | 'registryDocs',
+        category: JobFileCategory,
+      ) => {
+        loadedFileInfo[categoryKey]
+          .filter(f => !deletedFiles[categoryKey].has(f.name))
+          .forEach(f => {
+            files.push({
+              fileName: f.name,
+              fileKey: f.fileKey,
+              category,
+            })
+          })
+      }
+
+      pushLoadedFiles('customerInfo', 'customer_info')
+      pushLoadedFiles('contractDocs', 'contract_documents')
+      pushLoadedFiles('registryDocs', 'registry_transcript')
+
+      const uploadNewFiles = async (
+        categoryKey: 'customerInfo' | 'contractDocs' | 'registryDocs',
+        category: JobFileCategory,
+      ): Promise<Array<{ name: string; fileKey: string }>> => {
+        const pendingFiles = uploadedFiles[categoryKey]
+        if (pendingFiles.length === 0) {
+          return []
+        }
+
+        const savedFiles: Array<{ name: string; fileKey: string }> = []
+
+        for (const file of pendingFiles) {
+          const fileKey = await uploadToBlob(currentJobId, category, file)
+          files.push({
+            fileName: file.name,
+            fileKey,
+            category,
+          })
+          savedFiles.push({ name: file.name, fileKey })
+        }
+
+        return savedFiles
+      }
+
+      const newCustomerFiles = await uploadNewFiles('customerInfo', 'customer_info')
+      const newContractFiles = await uploadNewFiles('contractDocs', 'contract_documents')
+      const newRegistryFiles = await uploadNewFiles('registryDocs', 'registry_transcript')
+
+      const appendSavedFiles = (
+        categoryKey: 'customerInfo' | 'contractDocs' | 'registryDocs',
+        savedFiles: Array<{ name: string; fileKey: string }>,
+      ) => {
+        if (savedFiles.length === 0) {
+          return
+        }
+
+        const savedNames = new Set(savedFiles.map((file) => file.name))
+
+        setUploadedFiles((prev) => ({
+          ...prev,
+          [categoryKey]: prev[categoryKey].filter((file) => !savedNames.has(file.name)),
+        }))
+
+        setLoadedFileInfo((prev) => ({
+          ...prev,
+          [categoryKey]: [
+            ...prev[categoryKey],
+            ...savedFiles.map((file) => ({
+              name: file.name,
+              fileKey: file.fileKey,
+            })),
+          ],
+        }))
+      }
+
+      appendSavedFiles('customerInfo', newCustomerFiles)
+      appendSavedFiles('contractDocs', newContractFiles)
+      appendSavedFiles('registryDocs', newRegistryFiles)
+
+      await api.updateJob(currentJobId, {
+        files,
+      })
+
+      return currentJobId
+    } catch (err) {
+      console.error('Auto-save job failed:', err)
       return null
     }
   }
@@ -449,4 +487,5 @@ export default function Step1UploadFiles({
     </div>
   )
 }
+
 

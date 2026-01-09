@@ -1,4 +1,6 @@
+import type { JobFileCategory } from "@/types/shared/job-file";
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+
 
 export interface Template {
   id: string;
@@ -72,7 +74,7 @@ export const api = {
     files: Array<{
       fileName: string;
       fileKey?: string;
-      category: 'customer_info' | 'contract_documents' | 'registry_transcript';
+      category: JobFileCategory;
     }>;
   }) => {
     const response = await fetch(`${API_BASE_URL}/jobs`, {
@@ -98,7 +100,7 @@ export const api = {
     files?: Array<{
       fileName: string;
       fileKey?: string;
-      category: 'customer_info' | 'contract_documents' | 'registry_transcript';
+      category: JobFileCategory;
     }>;
   }) => {
     const response = await fetch(`${API_BASE_URL}/jobs/${jobId}`, {
@@ -151,5 +153,29 @@ export const api = {
 
     return data.data;
   },
+
+  getPresignedUrl: (
+    jobId: string,
+    data: {
+      fileName: string;
+      category: JobFileCategory;
+      contentType: string;
+    },
+  ) => {
+    return fetch(`${API_BASE_URL}/jobs/${jobId}/presigned-url`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        ...data,
+        jobId,
+      }),
+    })
+      .then((response) => response.json())
+      .then((payload) => {
+        return payload;
+      });
+  }
 };
 

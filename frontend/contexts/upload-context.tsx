@@ -18,6 +18,12 @@ interface FileInfo {
   category?: string
 }
 
+type FileInfoByCategory = {
+  customerInfo: FileInfo[]
+  contractDocs: FileInfo[]
+  registryDocs: FileInfo[]
+}
+
 interface UploadContextType {
   uploadedFiles: {
     customerInfo: File[]
@@ -32,11 +38,8 @@ interface UploadContextType {
     }>
   >
   // File info from API (for display purposes when loading existing job)
-  loadedFileInfo: {
-    customerInfo: FileInfo[]
-    contractDocs: FileInfo[]
-    registryDocs: FileInfo[]
-  }
+  loadedFileInfo: FileInfoByCategory
+  setLoadedFileInfo: React.Dispatch<React.SetStateAction<FileInfoByCategory>>
   fieldMappings: FieldMapping[]
   setFieldMappings: React.Dispatch<React.SetStateAction<FieldMapping[]>>
   jobName: string
@@ -70,11 +73,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     registryDocs: [],
   })
 
-  const [loadedFileInfo, setLoadedFileInfo] = useState<{
-    customerInfo: FileInfo[]
-    contractDocs: FileInfo[]
-    registryDocs: FileInfo[]
-  }>({
+  const [loadedFileInfo, setLoadedFileInfo] = useState<FileInfoByCategory>({
     customerInfo: [],
     contractDocs: [],
     registryDocs: [],
@@ -192,6 +191,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       uploadedFiles, 
       setUploadedFiles, 
       loadedFileInfo,
+      setLoadedFileInfo,
       fieldMappings, 
       setFieldMappings, 
       jobName,

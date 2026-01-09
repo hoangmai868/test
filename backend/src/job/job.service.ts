@@ -2,6 +2,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { CreateJobDto } from './dto/create-job.dto';
 import { UpdateJobDto } from './dto/update-job.dto';
+import { JobFileCategory } from '@prisma/client';
+
 
 @Injectable()
 export class JobService {
@@ -166,6 +168,24 @@ export class JobService {
       orderBy: {
         createdAt: 'desc',
       },
+    });
+  }
+
+  async attachFiles(
+    jobId: string,
+    files: {
+      fileName: string;
+      fileKey: string;
+      category: JobFileCategory;
+    }[],
+  ) {
+    return this.prisma.jobFile.createMany({
+      data: files.map(f => ({
+        jobId,
+        fileName: f.fileName,
+        fileKey: f.fileKey,
+        category: f.category,
+      })),
     });
   }
 }
