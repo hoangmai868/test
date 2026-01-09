@@ -9,6 +9,7 @@ interface FieldMapping {
   fieldId: string
   fileIds: string[]
   note: string
+  extractedValue: string
 }
 
 // File info from API (not actual File objects)
@@ -142,13 +143,36 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         registryDocs: registryDocsFiles,
       })
       
-      // Parse field mappings from templateJson
+      // Parse field mappings from templateJson (handle both grouped and flat formats)
       if (jobData.templateJson && Array.isArray(jobData.templateJson)) {
-        const mappings: FieldMapping[] = jobData.templateJson.map((mapping: any) => ({
-          fieldId: mapping.fieldId || "",
-          fileIds: mapping.fileIds || [],
-          note: mapping.note || "",
-        }))
+        // Check if it's the new grouped format or old flat format
+        const isGroupedFormat = jobData.templateJson.length > 0 && 
+          jobData.templateJson[0]?.groupName !== undefined
+        
+        let mappings: FieldMapping[] = []
+        
+        if (isGroupedFormat) {
+          // Transform from grouped format to flat format
+          jobData.templateJson.forEach((group: { groupName: string; fields: Array<{ name: string; fileNames: string[]; fileKeys?: string[]; note: string; extractedValue: string }> }) => {
+            group.fields.forEach((field) => {
+              mappings.push({
+                fieldId: field.name,
+                fileIds: field.fileNames || [],
+                note: field.note || "",
+                extractedValue: field.extractedValue || "",
+              })
+            })
+          })
+        } else {
+          // Old flat format (backward compatibility)
+          mappings = jobData.templateJson.map((mapping: any) => ({
+            fieldId: mapping.fieldId || "",
+            fileIds: mapping.fileIds || mapping.fileNames || [],
+            note: mapping.note || "",
+            extractedValue: mapping.extractedValue || "",
+          }))
+        }
+        
         setFieldMappings(mappings)
       }
     } catch (error) {

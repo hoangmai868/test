@@ -1,10 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../prisma.service';
+import * as ExcelJS from 'exceljs';
+import { PrismaService } from '../prisma/prisma.service';
 import { CreateJobDto } from './dto/create-job.dto';
 import { UpdateJobDto } from './dto/update-job.dto';
 import { JobFileCategory } from '@prisma/client';
 import { AzureBlobStorageService } from 'src/azure-blob/azure-blob.service';
-
+import { isTemplateGroup } from 'src/common/types/interface';
 
 @Injectable()
 export class JobService {
@@ -173,6 +174,101 @@ export class JobService {
         createdAt: 'desc',
       },
     });
+  }
+
+  async copyJob(jobId: string) {
+    const existingJob = await this.findOne(jobId);
+
+    if (!existingJob) {
+      throw new NotFoundException(`Job with ID ${jobId} not found`);
+    }
+
+    // Create new job with same data but status 'saved'
+    const createJobDto: CreateJobDto = {
+      userId: existingJob.userId,
+      templateId: existingJob.templateId,
+      title: `${existingJob.title} (コピー)`,
+      templateJson: existingJob.templateJson,
+      files: existingJob.files.map((file) => ({
+        fileName: file.fileName || '',
+        fileKey: file.fileKey || undefined,
+        category: file.category,
+      })),
+    };
+
+    return await this.create(createJobDto);
+  }
+
+  async generateExcel(jobId: string): Promise<Buffer> {
+    const job = await this.findOne(jobId);
+    if (!job) {
+      throw new NotFoundException(`Job with ID ${jobId} not found`);
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Template Data');
+
+    const templateJson = Array.isArray(job.templateJson) ? job.templateJson  as unknown[]: [];
+    const groups = templateJson.filter(isTemplateGroup);
+
+    if (templateJson.length === 0) {
+      worksheet.addRow(['No data available']);
+      const buffer = await workbook.xlsx.writeBuffer();
+      return Buffer.from(buffer);
+    }
+
+    // Header
+    const headers = ['分類', '訴状の必要な項目', '追加指示', '生成完了'];
+    worksheet.addRow(headers);
+
+    const headerRow = worksheet.getRow(1);
+    headerRow.font = { bold: true };
+    headerRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFE0E0E0' },
+    };
+
+    let currentRow = 2;
+
+    for (const group of groups) {
+      if (!group) {
+        continue;
+      }
+      const startRow = currentRow;
+
+      for (const field of group.fields) {
+        worksheet.addRow([
+          group.groupName || '',
+          field.name || '',
+          field.note || '',
+          field.extractedValue || '',
+        ]);
+        currentRow++;
+      };
+
+      const endRow = currentRow - 1;
+
+      // Merge group name column (分類)
+      if (endRow > startRow) {
+        worksheet.mergeCells(startRow, 1, endRow, 1);
+        worksheet.getCell(startRow, 1).alignment = {
+          vertical: 'middle',
+          horizontal: 'center',
+        };
+      }
+    }
+
+    // Set column width
+    worksheet.columns = [
+      { width: 20 }, // 分類
+      { width: 30 }, // 訴状の必要な項目
+      { width: 30 }, // 追加指示
+      { width: 30 }, // 生成完了
+    ];
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(buffer);
   }
 
   async attachFiles(

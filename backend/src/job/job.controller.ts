@@ -1,9 +1,10 @@
-import { Controller, Post, Put, Get, Delete, Query, Body, Param, HttpCode, HttpStatus, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Put, Get, Delete, Query, Body, Param, HttpCode, HttpStatus, BadRequestException, Res } from '@nestjs/common';
+import { AzureBlobStorageService } from 'src/azure-blob/azure-blob.service';
+import { JobFileCategory } from '@prisma/client';
 import { JobService } from './job.service';
 import { CreateJobDto } from './dto/create-job.dto';
 import { UpdateJobDto } from './dto/update-job.dto';
-import { AzureBlobStorageService } from 'src/azure-blob/azure-blob.service';
-import { JobFileCategory } from '@prisma/client';
+import type { Response } from 'express';
 
 @Controller('jobs')
 export class JobController {
@@ -135,6 +136,41 @@ export class JobController {
       success: true,
       data: result,
     };
+  }
+
+  @Post(':id/copy')
+  @HttpCode(HttpStatus.CREATED)
+  async copyJob(@Param('id') id: string) {
+    try {
+      const job = await this.jobService.copyJob(id);
+      return {
+        success: true,
+        data: job,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.message || 'Failed to copy job',
+      };
+    }
+  }
+
+  @Get(':id/download-excel')
+  async downloadExcel(@Param('id') id: string, @Res() res: Response) {
+    try {
+      const excelBuffer = await this.jobService.generateExcel(id);
+      const job = await this.jobService.findOne(id);
+      const fileName = `${job.title || 'job'}_${id}.xlsx`;
+      
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
+      res.send(excelBuffer);
+    } catch (error) {
+      res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        success: false,
+        message: error.message || 'Failed to generate Excel file',
+      });
+    }
   }
 }
 

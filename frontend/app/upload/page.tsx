@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useSearchParams, useRouter } from "next/navigation"
-import { Suspense, useState, useEffect } from "react"
+import { Suspense, useState, useEffect, useRef } from "react"
 import { Loader2 } from "lucide-react"
 import { useUploadContext } from "@/contexts/upload-context"
 import Step2FileMappingScreen from "@/components/screens/step2-file-mapping-screen"
@@ -38,6 +38,31 @@ function UploadContent() {
     contractDocs: new Set(),
     registryDocs: new Set(),
   })
+
+  const [dragStates, setDragStates] = useState<{
+    customerInfo: boolean
+    contractDocs: boolean
+    registryDocs: boolean
+  }>({
+    customerInfo: false,
+    contractDocs: false,
+    registryDocs: false,
+  })
+
+  // Use drag counters to prevent flickering when entering child elements
+  const dragCounters = useRef<{
+    customerInfo: number
+    contractDocs: number
+    registryDocs: number
+  }>({
+    customerInfo: 0,
+    contractDocs: 0,
+    registryDocs: 0,
+  })
+
+  const customerInfoRef = useRef<HTMLInputElement>(null)
+  const contractDocsRef = useRef<HTMLInputElement>(null)
+  const registryDocsRef = useRef<HTMLInputElement>(null)
 
   const buildStepUrl = (stepValue: number | string) => {
     const id = urlJobId || jobId

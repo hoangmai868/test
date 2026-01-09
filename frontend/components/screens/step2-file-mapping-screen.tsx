@@ -42,8 +42,8 @@ interface Step2FileMappingScreenProps {
     contractDocs: FileInfo[]
     registryDocs: FileInfo[]
   }
-  fieldMappings: Array<{ fieldId: string; fileIds: string[]; note: string }>
-  setFieldMappings: React.Dispatch<React.SetStateAction<Array<{ fieldId: string; fileIds: string[]; note: string }>>>
+  fieldMappings: Array<{ fieldId: string; fileIds: string[]; note: string, extractedValue: string }>
+  setFieldMappings: React.Dispatch<React.SetStateAction<Array<{ fieldId: string; fileIds: string[]; note: string, extractedValue: string }>>>
   onBack: () => void
   onNext: () => void
   canProceed: boolean
@@ -183,7 +183,7 @@ export default function Step2FileMappingScreen({
           return m
         })
       } else if (checked) {
-        return [...prev, { fieldId: fieldName, fileIds: [fileName], note: instructions[fieldName] || "" }]
+        return [...prev, { fieldId: fieldName, fileIds: [fileName], note: instructions[fieldName] || "", extractedValue: "" }]
       }
 
       return prev
@@ -199,7 +199,7 @@ export default function Step2FileMappingScreen({
       if (existingMapping) {
         return prev.map((m) => (m.fieldId === fieldName ? { ...m, note: instruction } : m))
       } else {
-        return [...prev, { fieldId: fieldName, fileIds: [], note: instruction }]
+        return [...prev, { fieldId: fieldName, fileIds: [], note: instruction, extractedValue: "" }]
       }
     })
   }
@@ -263,15 +263,15 @@ export default function Step2FileMappingScreen({
     setIsSaving(true)
 
     try {
-      // Build template_json from fieldMappings
-      const templateJson = fieldMappings
-
       // Build files array from both loadedFileInfo and uploadedFiles
       const files: Array<{
         fileName: string
         fileKey?: string
         category: 'customer_info' | 'contract_documents' | 'registry_transcript'
       }> = []
+
+      // Create a map of fileName -> fileKey for quick lookup
+      const fileKeyMap: Record<string, string | undefined> = {}
 
       // Add loaded files from API
       loadedFileInfo?.customerInfo.forEach((file) => {
@@ -280,6 +280,9 @@ export default function Step2FileMappingScreen({
           fileKey: file.fileKey,
           category: 'customer_info',
         })
+        if (file.fileKey) {
+          fileKeyMap[file.name] = file.fileKey
+        }
       })
 
       loadedFileInfo?.contractDocs.forEach((file) => {
@@ -288,6 +291,9 @@ export default function Step2FileMappingScreen({
           fileKey: file.fileKey,
           category: 'contract_documents',
         })
+        if (file.fileKey) {
+          fileKeyMap[file.name] = file.fileKey
+        }
       })
 
       loadedFileInfo?.registryDocs.forEach((file) => {
@@ -296,6 +302,9 @@ export default function Step2FileMappingScreen({
           fileKey: file.fileKey,
           category: 'registry_transcript',
         })
+        if (file.fileKey) {
+          fileKeyMap[file.name] = file.fileKey
+        }
       })
 
       // Add newly uploaded files
@@ -319,6 +328,47 @@ export default function Step2FileMappingScreen({
           category: 'registry_transcript',
         })
       })
+
+      // Build template_json from fieldMappings in grouped format
+      const templateJson = currentFieldGroups.map((group) => {
+        const groupFields = group.fields
+          .map((field) => {
+            const mapping = fieldMappings.find((m) => m.fieldId === field.name)
+            if (!mapping) return null
+
+            // Extract fileNames and fileKeys from fileIds
+            const fileNames: string[] = []
+            const fileKeys: string[] = []
+            
+            mapping.fileIds.forEach((fileId) => {
+              fileNames.push(fileId)
+              const fileKey = fileKeyMap[fileId]
+              if (fileKey) {
+                fileKeys.push(fileKey)
+              }
+            })
+
+            return {
+              name: field.name,
+              fileNames,
+              fileKeys,
+              note: mapping.note || "",
+              extractedValue: mapping.extractedValue || "",
+            }
+          })
+          .filter((field) => field !== null) as Array<{
+            name: string
+            fileNames: string[]
+            fileKeys: string[]
+            note: string
+            extractedValue: string
+          }>
+
+        return {
+          groupName: group.groupName,
+          fields: groupFields,
+        }
+      }).filter((group) => group.fields.length > 0)
 
       const jobData = {
         userId: user.id,
@@ -347,13 +397,41 @@ export default function Step2FileMappingScreen({
           setJobName(fetchedJob.title)
         }
         
-        // Fill lại fieldMappings từ templateJson
+        // Fill lại fieldMappings từ templateJson (transform from grouped to flat format)
         if (fetchedJob.templateJson && Array.isArray(fetchedJob.templateJson)) {
-          setFieldMappings(fetchedJob.templateJson)
+          // Check if it's the new grouped format or old flat format
+          const isGroupedFormat = fetchedJob.templateJson.length > 0 && 
+            fetchedJob.templateJson[0]?.groupName !== undefined
+          
+          let flatMappings: Array<{ fieldId: string; fileIds: string[]; note: string; extractedValue: string }> = []
+          
+          if (isGroupedFormat) {
+            // Transform from grouped format to flat format
+            fetchedJob.templateJson.forEach((group: { groupName: string; fields: Array<{ name: string; fileNames: string[]; fileKeys?: string[]; note: string; extractedValue: string }> }) => {
+              group.fields.forEach((field) => {
+                flatMappings.push({
+                  fieldId: field.name,
+                  fileIds: field.fileNames || [],
+                  note: field.note || "",
+                  extractedValue: field.extractedValue || "",
+                })
+              })
+            })
+          } else {
+            // Old flat format (backward compatibility)
+            flatMappings = fetchedJob.templateJson.map((mapping: any) => ({
+              fieldId: mapping.fieldId || "",
+              fileIds: mapping.fileIds || mapping.fileNames || [],
+              note: mapping.note || "",
+              extractedValue: mapping.extractedValue || "",
+            }))
+          }
+          
+          setFieldMappings(flatMappings)
           
           // Update mappings state
           const newMappings: Record<string, Record<string, boolean>> = {}
-          fetchedJob.templateJson.forEach((mapping: { fieldId: string; fileIds: string[] }) => {
+          flatMappings.forEach((mapping) => {
             newMappings[mapping.fieldId] = {}
             mapping.fileIds.forEach((fileId) => {
               newMappings[mapping.fieldId][fileId] = true
@@ -363,7 +441,7 @@ export default function Step2FileMappingScreen({
           
           // Update instructions state
           const newInstructions: Record<string, string> = {}
-          fetchedJob.templateJson.forEach((mapping: { fieldId: string; note: string }) => {
+          flatMappings.forEach((mapping) => {
             if (mapping.note) {
               newInstructions[mapping.fieldId] = mapping.note
             }
