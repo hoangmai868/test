@@ -9,6 +9,16 @@ export class LoginResponseDto {
     id: string;
     userName: string;
   };
+  accessToken?: string;
+  message?: string;
+}
+
+export class ProfileResponseDto {
+  success: boolean;
+  user?: {
+    id: string;
+    userName: string;
+  };
   message?: string;
 }
 

@@ -59,6 +59,17 @@ function UploadContent() {
     registryDocs: false,
   })
 
+  // Use drag counters to prevent flickering when entering child elements
+  const dragCounters = useRef<{
+    customerInfo: number
+    contractDocs: number
+    registryDocs: number
+  }>({
+    customerInfo: 0,
+    contractDocs: 0,
+    registryDocs: 0,
+  })
+
   const customerInfoRef = useRef<HTMLInputElement>(null)
   const contractDocsRef = useRef<HTMLInputElement>(null)
   const registryDocsRef = useRef<HTMLInputElement>(null)
@@ -251,23 +262,42 @@ function UploadContent() {
   const handleDragEnter = (category: "customerInfo" | "contractDocs" | "registryDocs", e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    setDragStates((prev) => ({ ...prev, [category]: true }))
+    
+    dragCounters.current[category]++
+    
+    // Only set drag state to true if this is the first enter (not from child elements)
+    if (dragCounters.current[category] === 1) {
+      setDragStates((prev) => ({ ...prev, [category]: true }))
+    }
   }
 
   const handleDragLeave = (category: "customerInfo" | "contractDocs" | "registryDocs", e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    setDragStates((prev) => ({ ...prev, [category]: false }))
+    
+    dragCounters.current[category]--
+    
+    // Only set drag state to false when counter reaches 0 (actually left the container)
+    if (dragCounters.current[category] === 0) {
+      setDragStates((prev) => ({ ...prev, [category]: false }))
+    }
   }
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
+    // Set dropEffect to indicate files can be dropped
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = "copy"
+    }
   }
 
   const handleDrop = (category: "customerInfo" | "contractDocs" | "registryDocs", e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
+    
+    // Reset drag counter and state
+    dragCounters.current[category] = 0
     setDragStates((prev) => ({ ...prev, [category]: false }))
 
     const files = e.dataTransfer.files
@@ -305,22 +335,35 @@ function UploadContent() {
           onDragLeave={(e) => handleDragLeave(category, e)}
           onDragOver={handleDragOver}
           onDrop={(e) => handleDrop(category, e)}
-          onClick={() => inputRef.current?.click()}
+          onClick={(e) => {
+            // Only trigger file input click if not dragging
+            if (!dragStates[category]) {
+              inputRef.current?.click()
+            }
+          }}
           className={`
-            relative border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-all
+            relative border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-all duration-200
             ${
               dragStates[category]
-                ? "border-primary bg-primary/5 scale-[1.02]"
+                ? "border-primary bg-primary/10 scale-[1.02] shadow-lg"
                 : "border-slate-300 hover:border-primary hover:bg-slate-50"
             }
           `}
         >
           <div className="flex flex-col items-center gap-2">
-            <div className="rounded-full bg-slate-100 p-2">
-              <Upload className="h-5 w-5 text-slate-600" />
+            <div className={`rounded-full p-2 transition-colors ${
+              dragStates[category] ? "bg-primary/20" : "bg-slate-100"
+            }`}>
+              <Upload className={`h-5 w-5 transition-colors ${
+                dragStates[category] ? "text-primary" : "text-slate-600"
+              }`} />
             </div>
             <div>
-              <p className="text-xs font-medium text-slate-700">ファイルをドラッグ&ドロップ</p>
+              <p className={`text-xs font-medium transition-colors ${
+                dragStates[category] ? "text-primary" : "text-slate-700"
+              }`}>
+                ファイルをドラッグ&ドロップ
+              </p>
               <p className="text-xs text-muted-foreground">または クリックしてファイルを選択</p>
             </div>
           </div>
@@ -348,10 +391,20 @@ function UploadContent() {
   }
 
   const getTotalFilesCount = () => {
+    // Count loaded files that are not deleted
+    const loadedCustomerInfo = loadedFileInfo.customerInfo.filter(f => !deletedFiles.customerInfo.has(f.name)).length
+    const loadedContractDocs = loadedFileInfo.contractDocs.filter(f => !deletedFiles.contractDocs.has(f.name)).length
+    const loadedRegistryDocs = loadedFileInfo.registryDocs.filter(f => !deletedFiles.registryDocs.has(f.name)).length
+    
+    // Count newly uploaded files
+    const uploadedCustomerInfo = uploadedFiles.customerInfo.length
+    const uploadedContractDocs = uploadedFiles.contractDocs.length
+    const uploadedRegistryDocs = uploadedFiles.registryDocs.length
+    
     return (
-      loadedFileInfo.customerInfo.length +
-      loadedFileInfo.contractDocs.length +
-      loadedFileInfo.registryDocs.length
+      loadedCustomerInfo + uploadedCustomerInfo +
+      loadedContractDocs + uploadedContractDocs +
+      loadedRegistryDocs + uploadedRegistryDocs
     )
   }
 

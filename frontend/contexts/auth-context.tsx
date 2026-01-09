@@ -5,9 +5,7 @@ import { api } from "@/lib/api"
 
 interface User {
   id: string
-  userName: string
   name: string
-  email: string
   role: string
   avatar: string | null
 }
@@ -34,18 +32,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  // Check if user is logged in on mount
+  // Check if user is logged in on mount via cookie
   useEffect(() => {
-    const checkAuth = () => {
-      const storedUser = localStorage.getItem("user")
-      if (storedUser) {
-        try {
-          setUser(JSON.parse(storedUser))
-        } catch (e) {
-          localStorage.removeItem("user")
+    const checkAuth = async () => {
+      try {
+        const profile = await api.getProfile()
+        if (profile.success && profile.user) {
+          const user: User = {
+            id: profile.user.id,
+            name: profile.user.userName,
+            role: "管理者",
+            avatar: null,
+          }
+          setUser(user)
         }
+      } catch (error) {
+        setUser(null)
+      } finally {
+        setIsLoading(false)
       }
-      setIsLoading(false)
     }
     checkAuth()
   }, [])
@@ -55,17 +60,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const response = await api.login(userName, password)
       
       if (response.success && response.user) {
-        const user: User = {
-          id: response.user.id,
-          userName: response.user.userName,
-          name: response.user.userName, // Use userName as name for now
-          email: response.user.userName, // Use userName as email for now
-          role: "管理者", // Default role, can be updated from API later
-          avatar: null,
+        // Fetch profile from cookie to get full user info
+        const profile = await api.getProfile()
+        if (profile.success && profile.user) {
+          const user: User = {
+            id: profile.user.id,
+            name: profile.user.userName,
+            role: "管理者",
+            avatar: null,
+          }
+          setUser(user)
+          return true
         }
-        setUser(user)
-        localStorage.setItem("user", JSON.stringify(user))
-        return true
       }
       return false
     } catch (error) {
@@ -74,9 +80,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const logout = () => {
-    setUser(null)
-    localStorage.removeItem("user")
+  const logout = async () => {
+    try {
+      await api.logout()
+    } catch (error) {
+      console.error("Logout error:", error)
+    } finally {
+      setUser(null)
+    }
   }
 
   return (

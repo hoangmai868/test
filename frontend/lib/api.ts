@@ -18,6 +18,7 @@ export const api = {
       headers: {
         'Content-Type': 'application/json',
       },
+      credentials: 'include',
       body: JSON.stringify({ userName, password }),
     });
 
@@ -30,12 +31,43 @@ export const api = {
     return data;
   },
 
+  logout: async () => {
+    const response = await fetch(`${API_BASE_URL}/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || 'Logout failed');
+    }
+
+    return data;
+  },
+
+  getProfile: async () => {
+    const response = await fetch(`${API_BASE_URL}/auth/profile`, {
+      method: 'GET',
+      credentials: 'include',
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || 'Failed to get profile');
+    }
+
+    return data;
+  },
+
   getTemplates: async (): Promise<Template[]> => {
     const response = await fetch(`${API_BASE_URL}/templates`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
       },
+      credentials: 'include',
     });
 
     const data = await response.json();
@@ -53,6 +85,7 @@ export const api = {
       headers: {
         'Content-Type': 'application/json',
       },
+      credentials: 'include',
     });
 
     const data = await response.json();
@@ -80,6 +113,7 @@ export const api = {
       headers: {
         'Content-Type': 'application/json',
       },
+      credentials: 'include',
       body: JSON.stringify(jobData),
     });
 
@@ -106,6 +140,7 @@ export const api = {
       headers: {
         'Content-Type': 'application/json',
       },
+      credentials: 'include',
       body: JSON.stringify(jobData),
     });
 
@@ -124,6 +159,7 @@ export const api = {
       headers: {
         'Content-Type': 'application/json',
       },
+      credentials: 'include',
     });
 
     const data = await response.json();
@@ -141,6 +177,7 @@ export const api = {
       headers: {
         'Content-Type': 'application/json',
       },
+      credentials: 'include',
     });
 
     const data = await response.json();
