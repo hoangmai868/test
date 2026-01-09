@@ -77,4 +77,28 @@ export class AzureBlobStorageService {
     const blobClient = containerClient.getBlobClient(blobName);
     await blobClient.deleteIfExists();
   }
+
+  async copyBlob(sourceBlobName: string, destinationBlobName: string) {
+    const containerClient =
+      this.blobServiceClient.getContainerClient(this.containerName);
+
+    const sourceBlobClient = containerClient.getBlobClient(sourceBlobName);
+    const destinationBlobClient =
+      containerClient.getBlockBlobClient(destinationBlobName);
+
+    const sasToken = generateBlobSASQueryParameters(
+      {
+        containerName: this.containerName,
+        blobName: sourceBlobName,
+        permissions: BlobSASPermissions.parse('r'),
+        expiresOn: new Date(Date.now() + 5 * 60 * 1000),
+      },
+      this.credential,
+    ).toString();
+
+    const sourceUrl = `${sourceBlobClient.url}?${sasToken}`;
+
+    const copyPoller = await destinationBlobClient.beginCopyFromURL(sourceUrl);
+    await copyPoller.pollUntilDone();
+  }
 }
