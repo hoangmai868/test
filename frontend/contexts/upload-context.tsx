@@ -117,14 +117,20 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       const registryDocsFiles: FileInfo[] = []
       
       if (jobData.files && Array.isArray(jobData.files)) {
-        for (const file of jobData.files) {
-          const fileInfo: FileInfo = {
-            name: file.fileName || "",
-            fileKey: file.fileKey,
-            category: file.category,
-          }
-          
-          switch (file.category) {
+        const categorizedFiles = await Promise.all(
+          jobData.files.map(async (file: { fileName?: string; fileKey?: string; category?: JobFileCategory }) => {
+            const fileInfo: FileInfo = {
+              name: file.fileName || "",
+              fileKey: file.fileKey,
+              category: file.category,
+            }
+
+            return { fileInfo, category: file.category }
+          }),
+        )
+
+        categorizedFiles.forEach(({ fileInfo, category }) => {
+          switch (category) {
             case "customer_info":
               customerInfoFiles.push(fileInfo)
               break
@@ -135,7 +141,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
               registryDocsFiles.push(fileInfo)
               break
           }
-        }
+        })
       }
       
       setLoadedFileInfo({

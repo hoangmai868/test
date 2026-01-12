@@ -6,11 +6,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChevronLeft, Play, Home } from "lucide-react"
 import { useUploadContext } from "@/contexts/upload-context"
 
-interface Step3ReviewProps {
+interface PreviewProps {
   jobId: string | null
 }
 
-export default function Step3Review({ jobId }: Step3ReviewProps) {
+export default function Preview({ jobId }: PreviewProps) {
   const router = useRouter()
   const {
     uploadedFiles,

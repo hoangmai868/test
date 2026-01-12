@@ -27,7 +27,7 @@ interface FieldGroup {
   fields: Field[]
 }
 
-interface Step2FileMappingScreenProps {
+interface FilesMappingProps {
   uploadedFiles: {
     customerInfo: File[]
     contractDocs: File[]
@@ -65,7 +65,7 @@ const convertSchemaToFieldGroups = (schemaJson: any[]): FieldGroup[] => {
   }))
 }
 
-export default function Step2FileMappingScreen({
+export default function FilesMapping({
   uploadedFiles,
   loadedFileInfo,
   fieldMappings,
@@ -73,7 +73,7 @@ export default function Step2FileMappingScreen({
   onBack,
   onNext,
   canProceed,
-}: Step2FileMappingScreenProps) {
+}: FilesMappingProps) {
   const router = useRouter()
   const { user } = useAuth()
   const { jobName, setJobName, jobId, setJobId } = useUploadContext()
@@ -229,7 +229,7 @@ export default function Step2FileMappingScreen({
 
   const handleSave = () => {
     // Save all current state (mappings, instructions, prompts, outputs)
-    // Data is already being saved to parent state via setFieldMappings
+    // Data is already being draft to parent state via setFieldMappings
     setIsPromptModalOpen(false)
   }
 
@@ -354,19 +354,19 @@ export default function Step2FileMappingScreen({
         files,
       }
 
-      let savedJob
+      let draftJob
       if (jobId) {
         // Update existing job
-        savedJob = await api.updateJob(jobId, jobData)
+        draftJob = await api.updateJob(jobId, jobData)
       } else {
         // Create new job
-        savedJob = await api.createJob(jobData)
-        setJobId(savedJob.id)
+        draftJob = await api.createJob(jobData)
+        setJobId(draftJob.id)
       }
 
       // Fetch lại job data từ API để fill vào form
       try {
-        const fetchedJob = await api.getJob(savedJob.id)
+        const fetchedJob = await api.getJob(draftJob.id)
         
         // Update job name từ server
         if (fetchedJob.title) {
@@ -425,14 +425,14 @@ export default function Step2FileMappingScreen({
           setInstructions(newInstructions)
         }
       } catch (fetchError) {
-        console.error("Failed to fetch saved job data:", fetchError)
+        console.error("Failed to fetch draft job data:", fetchError)
         // Continue even if fetch fails
       }
 
       if (showAlert) {
         alert("保存が完了しました")
       }
-      return savedJob
+      return draftJob
     } catch (error) {
       console.error("Failed to save job:", error)
       if (showAlert) {

@@ -22,7 +22,7 @@ export class JobService {
       const newJob = await tx.job.create({
         data: {
           ...jobData,
-          status: 'saved',
+          status: 'draft',
         },
         include: {
           files: true,
@@ -190,7 +190,7 @@ export class JobService {
         templateId: existingJob.templateId,
         title: `${existingJob.title} (コピー)`,
         templateJson: existingJob.templateJson as Prisma.InputJsonValue,
-        status: 'saved',
+        status: 'draft',
       },
     });
 
@@ -203,29 +203,47 @@ export class JobService {
     }[] = [];
 
     try {
-      for (const file of existingJob.files) {
-        const sourceBlobName = file.fileKey?.replace(/^\//, '');
-        if (!sourceBlobName) {
-          continue;
-        }
+      const copyResults = await Promise.all(
+        existingJob.files.map(async (file) => {
+          const sourceBlobName = file.fileKey?.replace(/^\//, '');
+          if (!sourceBlobName) {
+            return null;
+          }
 
-        const fileName = file.fileName || 'file';
-        const destinationBlobName = `${newJob.id}/${file.category}/${fileName}`;
+          const fileName = file.fileName || 'file';
+          const destinationBlobName = `${newJob.id}/${file.category}/${fileName}`;
 
-        await this.azureBlobStorage.copyBlob(
-          sourceBlobName,
-          destinationBlobName,
-        );
+          await this.azureBlobStorage.copyBlob(
+            sourceBlobName,
+            destinationBlobName,
+          );
 
-        copiedBlobNames.push(destinationBlobName);
+          return {
+            fileName,
+            destinationBlobName,
+            category: file.category,
+          };
+        }),
+      );
+
+      const successfulCopies = copyResults.filter(
+        (result): result is {
+          fileName: string;
+          destinationBlobName: string;
+          category: JobFileCategory;
+        } => result !== null,
+      );
+
+      successfulCopies.forEach((result) => {
+        copiedBlobNames.push(result.destinationBlobName);
 
         newJobFiles.push({
           jobId: newJob.id,
-          fileName,
-          fileKey: `/${destinationBlobName}`,
-          category: file.category,
+          fileName: result.fileName,
+          fileKey: `/${result.destinationBlobName}`,
+          category: result.category,
         });
-      }
+      });
 
       if (newJobFiles.length > 0) {
         await this.prisma.jobFile.createMany({
@@ -325,24 +343,6 @@ export class JobService {
 
     const buffer = await workbook.xlsx.writeBuffer();
     return Buffer.from(buffer);
-  }
-
-  async attachFiles(
-    jobId: string,
-    files: {
-      fileName: string;
-      fileKey: string;
-      category: JobFileCategory;
-    }[],
-  ) {
-    return this.prisma.jobFile.createMany({
-      data: files.map(f => ({
-        jobId,
-        fileName: f.fileName,
-        fileKey: f.fileKey,
-        category: f.category,
-      })),
-    });
   }
 
   async deleteFiles(jobId: string, fileKeys: string[]): Promise<{ count: number }> {

@@ -6,9 +6,9 @@ import { useSearchParams, useRouter } from "next/navigation"
 import { Suspense, useState, useEffect, useRef } from "react"
 import { Loader2 } from "lucide-react"
 import { useUploadContext } from "@/contexts/upload-context"
-import Step2FileMappingScreen from "@/components/screens/step2-file-mapping-screen"
-import Step1UploadFiles from "@/components/screens/step1-upload-files"
-import Step3Review from "@/components/screens/step3-review"
+import Step2FileMappingScreen from "@/components/screens/files-mapping"
+import UploadFiles from "@/components/screens/upload-files"
+import Preview from "@/components/screens/preview"
 
 function UploadContent() {
   const searchParams = useSearchParams()
@@ -125,12 +125,12 @@ function UploadContent() {
 
   if (step === "1") {
     return (
-      <Step1UploadFiles
+      <UploadFiles
         jobId={jobId}
         deletedFiles={deletedFiles}
         setDeletedFiles={setDeletedFiles}
-        onNext={(savedJobId) => {
-          router.push(savedJobId ? `/upload?step=2&jobId=${savedJobId}` : "/upload?step=2")
+        onNext={(draftJobId) => {
+          router.push(draftJobId ? `/upload?step=2&jobId=${draftJobId}` : "/upload?step=2")
         }}
       />
     )
@@ -153,7 +153,7 @@ function UploadContent() {
   }
 
   if (step === "3") {
-    return <Step3Review jobId={jobId} />
+    return <Preview jobId={jobId} />
   }
 
   return null

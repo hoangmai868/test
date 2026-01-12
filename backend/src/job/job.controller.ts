@@ -113,19 +113,6 @@ export class JobController {
     });
   }
 
-  @Post(':jobId/files')
-  attachFiles(
-    @Param('jobId') jobId: string,
-    @Body()
-    files: {
-      fileName: string;
-      fileKey: string;
-      category: JobFileCategory;
-    }[],
-  ) {
-    return this.jobService.attachFiles(jobId, files);
-  }
-
   @Delete(':jobId/files')
   async deleteJobFiles(
     @Param('jobId') jobId: string,

@@ -28,7 +28,7 @@ type CombinedFile = {
   fileKey?: string
 }
 
-interface Step1UploadFilesProps {
+interface UploadFilesProps {
   jobId: string | null
   deletedFiles: {
     customerInfo: Set<string>
@@ -40,15 +40,15 @@ interface Step1UploadFilesProps {
     contractDocs: Set<string>
     registryDocs: Set<string>
   }>>
-  onNext: (savedJobId: string | null) => void
+  onNext: (draftJobId: string | null) => void
 }
 
-export default function Step1UploadFiles({
+export default function UploadFiles({
   jobId,
   deletedFiles,
   setDeletedFiles,
   onNext,
-}: Step1UploadFilesProps) {
+}: UploadFilesProps) {
   const router = useRouter()
   const { user } = useAuth()
   const {
@@ -108,9 +108,9 @@ export default function Step1UploadFiles({
       }
 
       if (!currentJobId) {
-        const savedJob = await api.createJob(baseJobData)
-        setJobId(savedJob.id)
-        currentJobId = savedJob.id
+        const draftJob = await api.createJob(baseJobData)
+        setJobId(draftJob.id)
+        currentJobId = draftJob.id
       } else {
         await api.updateJob(currentJobId, {
           title: jobName,
@@ -160,45 +160,49 @@ export default function Step1UploadFiles({
           return []
         }
 
-        const savedFiles: Array<{ name: string; fileKey: string }> = []
+        const uploadResults = await Promise.all(
+          pendingFiles.map(async (file) => {
+            const fileKey = await uploadToBlob(currentJobId, category, file)
+            return { file, fileKey }
+          }),
+        )
 
-        for (const file of pendingFiles) {
-          const fileKey = await uploadToBlob(currentJobId, category, file)
+        const draftFiles: Array<{ name: string; fileKey: string }> = uploadResults.map(({ file, fileKey }) => {
           files.push({
             fileName: file.name,
             fileKey,
             category,
           })
-          savedFiles.push({ name: file.name, fileKey })
-        }
+          return { name: file.name, fileKey }
+        })
 
-        return savedFiles
+        return draftFiles
       }
 
       const newCustomerFiles = await uploadNewFiles('customerInfo', 'customer_info')
       const newContractFiles = await uploadNewFiles('contractDocs', 'contract_documents')
       const newRegistryFiles = await uploadNewFiles('registryDocs', 'registry_transcript')
 
-      const appendSavedFiles = (
+      const appenddraftFiles = (
         categoryKey: 'customerInfo' | 'contractDocs' | 'registryDocs',
-        savedFiles: Array<{ name: string; fileKey: string }>,
+        draftFiles: Array<{ name: string; fileKey: string }>,
       ) => {
-        if (savedFiles.length === 0) {
+        if (draftFiles.length === 0) {
           return
         }
 
-        const savedNames = new Set(savedFiles.map((file) => file.name))
+        const draftNames = new Set(draftFiles.map((file) => file.name))
 
         setUploadedFiles((prev) => ({
           ...prev,
-          [categoryKey]: prev[categoryKey].filter((file) => !savedNames.has(file.name)),
+          [categoryKey]: prev[categoryKey].filter((file) => !draftNames.has(file.name)),
         }))
 
         setLoadedFileInfo((prev) => ({
           ...prev,
           [categoryKey]: [
             ...prev[categoryKey],
-            ...savedFiles.map((file) => ({
+            ...draftFiles.map((file) => ({
               name: file.name,
               fileKey: file.fileKey,
             })),
@@ -206,9 +210,9 @@ export default function Step1UploadFiles({
         }))
       }
 
-      appendSavedFiles('customerInfo', newCustomerFiles)
-      appendSavedFiles('contractDocs', newContractFiles)
-      appendSavedFiles('registryDocs', newRegistryFiles)
+      appenddraftFiles('customerInfo', newCustomerFiles)
+      appenddraftFiles('contractDocs', newContractFiles)
+      appenddraftFiles('registryDocs', newRegistryFiles)
 
       if (currentJobId && deletedFileKeys.length > 0) {
         await api.deleteJobFiles(currentJobId, deletedFileKeys)
@@ -501,8 +505,8 @@ export default function Step1UploadFiles({
         <div className="flex justify-end">
           <Button
             onClick={async () => {
-              const savedId = await autoSaveJob()
-              onNext(savedId)
+              const draftId = await autoSaveJob()
+              onNext(draftId)
             }}
             disabled={!canAccessStep(2)}
             className="w-full sm:w-auto"
