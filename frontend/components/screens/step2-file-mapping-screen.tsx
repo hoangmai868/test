@@ -16,6 +16,8 @@ import type { JSX } from "react/jsx-runtime"
 import { api, type Template } from "@/lib/api"
 import { useAuth } from "@/contexts/auth-context"
 import { useUploadContext } from "@/contexts/upload-context"
+import type { FileInfo, FileInfoByCategory } from "@/contexts/upload-context"
+import type { JobFileCategory as FileCategory } from "@/types/shared/job-file"
 interface Field {
   name: string
 }
@@ -25,23 +27,13 @@ interface FieldGroup {
   fields: Field[]
 }
 
-interface FileInfo {
-  name: string
-  fileKey?: string
-  category?: string
-}
-
 interface Step2FileMappingScreenProps {
   uploadedFiles: {
     customerInfo: File[]
     contractDocs: File[]
     registryDocs: File[]
   }
-  loadedFileInfo?: {
-    customerInfo: FileInfo[]
-    contractDocs: FileInfo[]
-    registryDocs: FileInfo[]
-  }
+  loadedFileInfo?: FileInfoByCategory
   fieldMappings: Array<{ fieldId: string; fileIds: string[]; note: string, extractedValue: string }>
   setFieldMappings: React.Dispatch<React.SetStateAction<Array<{ fieldId: string; fileIds: string[]; note: string, extractedValue: string }>>>
   onBack: () => void
@@ -267,67 +259,51 @@ export default function Step2FileMappingScreen({
       const files: Array<{
         fileName: string
         fileKey?: string
-        category: 'customer_info' | 'contract_documents' | 'registry_transcript'
+        category: FileCategory
       }> = []
 
       // Create a map of fileName -> fileKey for quick lookup
       const fileKeyMap: Record<string, string | undefined> = {}
 
-      // Add loaded files from API
-      loadedFileInfo?.customerInfo.forEach((file) => {
-        files.push({
-          fileName: file.name,
-          fileKey: file.fileKey,
-          category: 'customer_info',
+      const appendLoadedFiles = (items: FileInfo[] | undefined, category: FileCategory) => {
+        items?.forEach((file) => {
+          files.push({
+            fileName: file.name,
+            fileKey: file.fileKey,
+            category,
+          })
+          if (file.fileKey) {
+            fileKeyMap[file.name] = file.fileKey
+          }
         })
-        if (file.fileKey) {
-          fileKeyMap[file.name] = file.fileKey
-        }
-      })
+      }
 
-      loadedFileInfo?.contractDocs.forEach((file) => {
-        files.push({
-          fileName: file.name,
-          fileKey: file.fileKey,
-          category: 'contract_documents',
+      const appendUploadedFiles = (items: File[], category: FileCategory) => {
+        items.forEach((file) => {
+          files.push({
+            fileName: file.name,
+            category,
+          })
         })
-        if (file.fileKey) {
-          fileKeyMap[file.name] = file.fileKey
-        }
-      })
+      }
 
-      loadedFileInfo?.registryDocs.forEach((file) => {
-        files.push({
-          fileName: file.name,
-          fileKey: file.fileKey,
-          category: 'registry_transcript',
-        })
-        if (file.fileKey) {
-          fileKeyMap[file.name] = file.fileKey
-        }
-      })
+      const loadedFileBuckets: Array<[FileInfo[] | undefined, FileCategory]> = [
+        [loadedFileInfo?.customerInfo, "customer_info"],
+        [loadedFileInfo?.contractDocs, "contract_documents"],
+        [loadedFileInfo?.registryDocs, "registry_transcript"],
+      ]
 
-      // Add newly uploaded files
-      uploadedFiles.customerInfo.forEach((file) => {
-        files.push({
-          fileName: file.name,
-          category: 'customer_info',
-        })
-      })
+      loadedFileBuckets.forEach(([bucket, category]) => appendLoadedFiles(bucket, category))
 
-      uploadedFiles.contractDocs.forEach((file) => {
-        files.push({
-          fileName: file.name,
-          category: 'contract_documents',
-        })
-      })
+      const uploadedFileBuckets: Array<[File[], FileCategory]> = [
+        [uploadedFiles.customerInfo, "customer_info"],
+        [uploadedFiles.contractDocs, "contract_documents"],
+        [uploadedFiles.registryDocs, "registry_transcript"],
+      ]
 
-      uploadedFiles.registryDocs.forEach((file) => {
-        files.push({
-          fileName: file.name,
-          category: 'registry_transcript',
-        })
-      })
+      uploadedFileBuckets.forEach(([bucket, category]) =>
+        appendUploadedFiles(bucket, category)
+      )
 
       // Build template_json from fieldMappings in grouped format
       const templateJson = currentFieldGroups.map((group) => {

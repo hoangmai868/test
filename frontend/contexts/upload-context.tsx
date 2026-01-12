@@ -4,6 +4,7 @@ import type React from "react"
 
 import { createContext, useContext, useState, useCallback, type ReactNode } from "react"
 import { api } from "@/lib/api"
+import { JobFileCategory } from "@/types/shared/job-file"
 
 interface FieldMapping {
   fieldId: string
@@ -13,13 +14,13 @@ interface FieldMapping {
 }
 
 // File info from API (not actual File objects)
-interface FileInfo {
+export interface FileInfo {
   name: string
   fileKey?: string
-  category?: string
+  category?: JobFileCategory
 }
 
-type FileInfoByCategory = {
+export type FileInfoByCategory = {
   customerInfo: FileInfo[]
   contractDocs: FileInfo[]
   registryDocs: FileInfo[]
