@@ -27,7 +27,7 @@ enum JobFileCategory {
 }
 
 enum JobStatus {
-  saved
+  draft
   processing
   completed
 }
@@ -63,7 +63,7 @@ model Job {
   userId      String         @map("user_id")
   templateId  String         @map("template_id")
   title       String
-  status      JobStatus      @default(saved)
+  status      JobStatus      @default(draft)
   templateJson Json          @map("template_json")
   createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz
   updatedAt   DateTime       @updatedAt @map("updated_at") @db.Timestamptz

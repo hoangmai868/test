@@ -16,6 +16,8 @@ import type { JSX } from "react/jsx-runtime"
 import { api, type Template } from "@/lib/api"
 import { useAuth } from "@/contexts/auth-context"
 import { useUploadContext } from "@/contexts/upload-context"
+import type { FileInfo, FileInfoByCategory } from "@/contexts/upload-context"
+import type { JobFileCategory as FileCategory } from "@/types/shared/job-file"
 interface Field {
   name: string
 }
@@ -25,23 +27,13 @@ interface FieldGroup {
   fields: Field[]
 }
 
-interface FileInfo {
-  name: string
-  fileKey?: string
-  category?: string
-}
-
-interface FileMappingScreenProps {
+interface FilesMappingProps {
   uploadedFiles: {
     customerInfo: File[]
     contractDocs: File[]
     registryDocs: File[]
   }
-  loadedFileInfo?: {
-    customerInfo: FileInfo[]
-    contractDocs: FileInfo[]
-    registryDocs: FileInfo[]
-  }
+  loadedFileInfo?: FileInfoByCategory
   fieldMappings: Array<{ fieldId: string; fileIds: string[]; note: string, extractedValue: string }>
   setFieldMappings: React.Dispatch<React.SetStateAction<Array<{ fieldId: string; fileIds: string[]; note: string, extractedValue: string }>>>
   onBack: () => void
@@ -73,7 +65,7 @@ const convertSchemaToFieldGroups = (schemaJson: any[]): FieldGroup[] => {
   }))
 }
 
-export default function FileMappingScreen({
+export default function FilesMapping({
   uploadedFiles,
   loadedFileInfo,
   fieldMappings,
@@ -81,7 +73,7 @@ export default function FileMappingScreen({
   onBack,
   onNext,
   canProceed,
-}: FileMappingScreenProps) {
+}: FilesMappingProps) {
   const router = useRouter()
   const { user } = useAuth()
   const { jobName, setJobName, jobId, setJobId } = useUploadContext()
@@ -237,7 +229,7 @@ export default function FileMappingScreen({
 
   const handleSave = () => {
     // Save all current state (mappings, instructions, prompts, outputs)
-    // Data is already being saved to parent state via setFieldMappings
+    // Data is already being draft to parent state via setFieldMappings
     setIsPromptModalOpen(false)
   }
 
@@ -267,67 +259,51 @@ export default function FileMappingScreen({
       const files: Array<{
         fileName: string
         fileKey?: string
-        category: 'customer_info' | 'contract_documents' | 'registry_transcript'
+        category: FileCategory
       }> = []
 
       // Create a map of fileName -> fileKey for quick lookup
       const fileKeyMap: Record<string, string | undefined> = {}
 
-      // Add loaded files from API
-      loadedFileInfo?.customerInfo.forEach((file) => {
-        files.push({
-          fileName: file.name,
-          fileKey: file.fileKey,
-          category: 'customer_info',
+      const appendLoadedFiles = (items: FileInfo[] | undefined, category: FileCategory) => {
+        items?.forEach((file) => {
+          files.push({
+            fileName: file.name,
+            fileKey: file.fileKey,
+            category,
+          })
+          if (file.fileKey) {
+            fileKeyMap[file.name] = file.fileKey
+          }
         })
-        if (file.fileKey) {
-          fileKeyMap[file.name] = file.fileKey
-        }
-      })
+      }
 
-      loadedFileInfo?.contractDocs.forEach((file) => {
-        files.push({
-          fileName: file.name,
-          fileKey: file.fileKey,
-          category: 'contract_documents',
+      const appendUploadedFiles = (items: File[], category: FileCategory) => {
+        items.forEach((file) => {
+          files.push({
+            fileName: file.name,
+            category,
+          })
         })
-        if (file.fileKey) {
-          fileKeyMap[file.name] = file.fileKey
-        }
-      })
+      }
 
-      loadedFileInfo?.registryDocs.forEach((file) => {
-        files.push({
-          fileName: file.name,
-          fileKey: file.fileKey,
-          category: 'registry_transcript',
-        })
-        if (file.fileKey) {
-          fileKeyMap[file.name] = file.fileKey
-        }
-      })
+      const loadedFileBuckets: Array<[FileInfo[] | undefined, FileCategory]> = [
+        [loadedFileInfo?.customerInfo, "customer_info"],
+        [loadedFileInfo?.contractDocs, "contract_documents"],
+        [loadedFileInfo?.registryDocs, "registry_transcript"],
+      ]
 
-      // Add newly uploaded files
-      uploadedFiles.customerInfo.forEach((file) => {
-        files.push({
-          fileName: file.name,
-          category: 'customer_info',
-        })
-      })
+      loadedFileBuckets.forEach(([bucket, category]) => appendLoadedFiles(bucket, category))
 
-      uploadedFiles.contractDocs.forEach((file) => {
-        files.push({
-          fileName: file.name,
-          category: 'contract_documents',
-        })
-      })
+      const uploadedFileBuckets: Array<[File[], FileCategory]> = [
+        [uploadedFiles.customerInfo, "customer_info"],
+        [uploadedFiles.contractDocs, "contract_documents"],
+        [uploadedFiles.registryDocs, "registry_transcript"],
+      ]
 
-      uploadedFiles.registryDocs.forEach((file) => {
-        files.push({
-          fileName: file.name,
-          category: 'registry_transcript',
-        })
-      })
+      uploadedFileBuckets.forEach(([bucket, category]) =>
+        appendUploadedFiles(bucket, category)
+      )
 
       // Build template_json from fieldMappings in grouped format
       const templateJson = currentFieldGroups.map((group) => {
@@ -378,19 +354,19 @@ export default function FileMappingScreen({
         files,
       }
 
-      let savedJob
+      let draftJob
       if (jobId) {
         // Update existing job
-        savedJob = await api.updateJob(jobId, jobData)
+        draftJob = await api.updateJob(jobId, jobData)
       } else {
         // Create new job
-        savedJob = await api.createJob(jobData)
-        setJobId(savedJob.id)
+        draftJob = await api.createJob(jobData)
+        setJobId(draftJob.id)
       }
 
       // Fetch lại job data từ API để fill vào form
       try {
-        const fetchedJob = await api.getJob(savedJob.id)
+        const fetchedJob = await api.getJob(draftJob.id)
         
         // Update job name từ server
         if (fetchedJob.title) {
@@ -449,14 +425,14 @@ export default function FileMappingScreen({
           setInstructions(newInstructions)
         }
       } catch (fetchError) {
-        console.error("Failed to fetch saved job data:", fetchError)
+        console.error("Failed to fetch draft job data:", fetchError)
         // Continue even if fetch fails
       }
 
       if (showAlert) {
         alert("保存が完了しました")
       }
-      return savedJob
+      return draftJob
     } catch (error) {
       console.error("Failed to save job:", error)
       if (showAlert) {
@@ -544,7 +520,8 @@ export default function FileMappingScreen({
                 placeholder="追加指示を入力"
                 value={instructions[field.name] || ""}
                 onChange={(e) => handleInstructionChange(field.name, e.target.value)}
-                className="text-sm w-full min-h-[60px] resize-none"
+                rows={1}
+                className="text-sm w-full resize-y overflow-auto min-h-[1.5rem] max-h-[4.5rem]"
               />
             </td>
           </tr>,

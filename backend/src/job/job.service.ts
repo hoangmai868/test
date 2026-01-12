@@ -1,14 +1,18 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateJobDto } from './dto/create-job.dto';
 import { UpdateJobDto } from './dto/update-job.dto';
-import * as ExcelJS from 'exceljs';
-
+import { JobFileCategory, Prisma } from '@prisma/client';
+import { AzureBlobStorageService } from 'src/azure-blob/azure-blob.service';
 import { isTemplateGroup } from 'src/common/types/interface';
 
 @Injectable()
 export class JobService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly azureBlobStorage: AzureBlobStorageService,
+  ) {}
 
   async create(createJobDto: CreateJobDto) {
     const { files, ...jobData } = createJobDto;
@@ -18,7 +22,7 @@ export class JobService {
       const newJob = await tx.job.create({
         data: {
           ...jobData,
-          status: 'saved',
+          status: 'draft',
         },
         include: {
           files: true,
@@ -179,20 +183,94 @@ export class JobService {
       throw new NotFoundException(`Job with ID ${jobId} not found`);
     }
 
-    // Create new job with same data but status 'saved'
-    const createJobDto: CreateJobDto = {
-      userId: existingJob.userId,
-      templateId: existingJob.templateId,
-      title: `${existingJob.title} (コピー)`,
-      templateJson: existingJob.templateJson,
-      files: existingJob.files.map((file) => ({
-        fileName: file.fileName || '',
-        fileKey: file.fileKey || undefined,
-        category: file.category,
-      })),
-    };
+    // Create new job record first
+    const newJob = await this.prisma.job.create({
+      data: {
+        userId: existingJob.userId,
+        templateId: existingJob.templateId,
+        title: `${existingJob.title} (コピー)`,
+        templateJson: existingJob.templateJson as Prisma.InputJsonValue,
+        status: 'draft',
+      },
+    });
 
-    return await this.create(createJobDto);
+    const copiedBlobNames: string[] = [];
+    const newJobFiles: {
+      jobId: string;
+      fileName: string;
+      fileKey: string;
+      category: JobFileCategory;
+    }[] = [];
+
+    try {
+      const copyResults = await Promise.all(
+        existingJob.files.map(async (file) => {
+          const sourceBlobName = file.fileKey?.replace(/^\//, '');
+          if (!sourceBlobName) {
+            return null;
+          }
+
+          const fileName = file.fileName || 'file';
+          const destinationBlobName = `${newJob.id}/${file.category}/${fileName}`;
+
+          await this.azureBlobStorage.copyBlob(
+            sourceBlobName,
+            destinationBlobName,
+          );
+
+          return {
+            fileName,
+            destinationBlobName,
+            category: file.category,
+          };
+        }),
+      );
+
+      const successfulCopies = copyResults.filter(
+        (result): result is {
+          fileName: string;
+          destinationBlobName: string;
+          category: JobFileCategory;
+        } => result !== null,
+      );
+
+      successfulCopies.forEach((result) => {
+        copiedBlobNames.push(result.destinationBlobName);
+
+        newJobFiles.push({
+          jobId: newJob.id,
+          fileName: result.fileName,
+          fileKey: `/${result.destinationBlobName}`,
+          category: result.category,
+        });
+      });
+
+      if (newJobFiles.length > 0) {
+        await this.prisma.jobFile.createMany({
+          data: newJobFiles,
+        });
+      }
+
+      return this.findOne(newJob.id);
+    } catch (error) {
+      await Promise.all(
+        copiedBlobNames.map(async (blobName) => {
+          try {
+            await this.azureBlobStorage.deleteBlob(blobName);
+          } catch {
+            // Ignore cleanup failures
+          }
+        }),
+      );
+
+      try {
+        await this.prisma.job.delete({ where: { id: newJob.id } });
+      } catch {
+        // Ignore cleanup failures
+      }
+
+      throw error;
+    }
   }
 
   async generateExcel(jobId: string): Promise<Buffer> {
@@ -266,5 +344,33 @@ export class JobService {
     const buffer = await workbook.xlsx.writeBuffer();
     return Buffer.from(buffer);
   }
-}
 
+  async deleteFiles(jobId: string, fileKeys: string[]): Promise<{ count: number }> {
+    if (!fileKeys || fileKeys.length === 0) {
+      return { count: 0 };
+    }
+
+    const deletedBlobNames = fileKeys
+      .map((key) => key?.replace(/^\//, ''))
+      .filter((key): key is string => key.length > 0);
+
+    await Promise.all(
+      deletedBlobNames.map((blobName) =>
+        this.azureBlobStorage.deleteBlob(blobName),
+      ),
+    );
+
+    return this.prisma.jobFile.deleteMany({
+      where: {
+        jobId,
+        fileKey: {
+          in: fileKeys,
+        },
+      },
+    });
+  }
+
+  async generateDownloadUrl(blobName: string) {
+    return this.azureBlobStorage.generateDownloadUrl(blobName);
+  }
+}

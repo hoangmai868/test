@@ -9,6 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Download, Copy, Edit, Plus, Loader2 } from "lucide-react"
 import { api } from "@/lib/api"
 import { useAuth } from "@/contexts/auth-context"
+import { JobStatus, JOB_STATUS_LIST } from "@/types/shared/job-status"
 
 interface JobData {
   id: string | number
@@ -110,13 +111,9 @@ const transformJobData = (job: any): JobData => {
 
 export default function TopPage() {
   const [selectedJob, setSelectedJob] = useState<string | number | null>(null)
-  const [activeJobTab, setActiveJobTab] = useState<"saved" | "processing" | "completed">("saved")
-  const [jobs, setJobs] = useState<{
-    saved: JobData[]
-    processing: JobData[]
-    completed: JobData[]
-  }>({
-    saved: [],
+  const [activeJobTab, setActiveJobTab] = useState<JobStatus>("draft")
+  const [jobs, setJobs] = useState<Record<JobStatus, JobData[]>>({
+    draft: [],
     processing: [],
     completed: [],
   })
@@ -141,10 +138,10 @@ export default function TopPage() {
         const transformedJobs = fetchedJobs.map(transformJobData)
         
         const groupedJobs = {
-          saved: transformedJobs.filter((job: JobData) => {
+          draft: transformedJobs.filter((job: JobData) => {
             // Get original job to check status
             const originalJob = fetchedJobs.find((j: any) => j.id === job.id)
-            return originalJob?.status === 'saved'
+            return originalJob?.status === 'draft'
           }),
           processing: transformedJobs.filter((job: JobData) => {
             const originalJob = fetchedJobs.find((j: any) => j.id === job.id)
@@ -167,13 +164,13 @@ export default function TopPage() {
     fetchJobs()
   }, [user?.id])
 
-  const getJobsByStatus = (status: "saved" | "processing" | "completed") => {
+  const getJobsByStatus = (status: JobStatus) => {
     return jobs[status]
   }
 
   const getSelectedJobData = (): JobData | null => {
     if (!selectedJob) return null
-    const allJobs = [...jobs.saved, ...jobs.processing, ...jobs.completed]
+    const allJobs = [...jobs.draft, ...jobs.processing, ...jobs.completed]
     return allJobs.find((job) => job.id === selectedJob) || null
   }
 
@@ -223,12 +220,12 @@ export default function TopPage() {
             <CardContent>
               <Tabs value={activeJobTab} onValueChange={(v) => setActiveJobTab(v as typeof activeJobTab)}>
                 <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="saved">一時保存</TabsTrigger>
+                  <TabsTrigger value="draft">一時保存</TabsTrigger>
                   <TabsTrigger value="processing">処理中</TabsTrigger>
                   <TabsTrigger value="completed">完了</TabsTrigger>
                 </TabsList>
 
-                {(["saved", "processing", "completed"] as const).map((status) => (
+                {JOB_STATUS_LIST.map((status) => (
                   <TabsContent key={status} value={status}>
                     <ScrollArea className="h-[400px]">
                       {isLoading ? (
@@ -258,7 +255,7 @@ export default function TopPage() {
                                     {job.date} • {job.files}件のファイル
                                   </p>
                                 </div>
-                                {status === "saved" && (
+                                {status === "draft" && (
                                   <Button
                                     size="sm"
                                     variant="outline"
@@ -314,7 +311,7 @@ export default function TopPage() {
                                     ) : (
                                       <>
                                         <Copy className="mr-1 h-3 w-3" />
-                                        コピー & 編集
+                                        複製
                                       </>
                                     )}
                                   </Button>

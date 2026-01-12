@@ -4,6 +4,7 @@ import type React from "react"
 
 import { createContext, useContext, useState, useCallback, type ReactNode } from "react"
 import { api } from "@/lib/api"
+import { JobFileCategory } from "@/types/shared/job-file"
 
 interface FieldMapping {
   fieldId: string
@@ -13,10 +14,16 @@ interface FieldMapping {
 }
 
 // File info from API (not actual File objects)
-interface FileInfo {
+export interface FileInfo {
   name: string
   fileKey?: string
-  category?: string
+  category?: JobFileCategory
+}
+
+export type FileInfoByCategory = {
+  customerInfo: FileInfo[]
+  contractDocs: FileInfo[]
+  registryDocs: FileInfo[]
 }
 
 interface UploadContextType {
@@ -33,11 +40,8 @@ interface UploadContextType {
     }>
   >
   // File info from API (for display purposes when loading existing job)
-  loadedFileInfo: {
-    customerInfo: FileInfo[]
-    contractDocs: FileInfo[]
-    registryDocs: FileInfo[]
-  }
+  loadedFileInfo: FileInfoByCategory
+  setLoadedFileInfo: React.Dispatch<React.SetStateAction<FileInfoByCategory>>
   fieldMappings: FieldMapping[]
   setFieldMappings: React.Dispatch<React.SetStateAction<FieldMapping[]>>
   jobName: string
@@ -71,11 +75,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     registryDocs: [],
   })
 
-  const [loadedFileInfo, setLoadedFileInfo] = useState<{
-    customerInfo: FileInfo[]
-    contractDocs: FileInfo[]
-    registryDocs: FileInfo[]
-  }>({
+  const [loadedFileInfo, setLoadedFileInfo] = useState<FileInfoByCategory>({
     customerInfo: [],
     contractDocs: [],
     registryDocs: [],
@@ -117,14 +117,20 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       const registryDocsFiles: FileInfo[] = []
       
       if (jobData.files && Array.isArray(jobData.files)) {
-        for (const file of jobData.files) {
-          const fileInfo: FileInfo = {
-            name: file.fileName || "",
-            fileKey: file.fileKey,
-            category: file.category,
-          }
-          
-          switch (file.category) {
+        const categorizedFiles = await Promise.all(
+          jobData.files.map(async (file: { fileName?: string; fileKey?: string; category?: JobFileCategory }) => {
+            const fileInfo: FileInfo = {
+              name: file.fileName || "",
+              fileKey: file.fileKey,
+              category: file.category,
+            }
+
+            return { fileInfo, category: file.category }
+          }),
+        )
+
+        categorizedFiles.forEach(({ fileInfo, category }) => {
+          switch (category) {
             case "customer_info":
               customerInfoFiles.push(fileInfo)
               break
@@ -135,7 +141,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
               registryDocsFiles.push(fileInfo)
               break
           }
-        }
+        })
       }
       
       setLoadedFileInfo({
@@ -216,6 +222,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       uploadedFiles, 
       setUploadedFiles, 
       loadedFileInfo,
+      setLoadedFileInfo,
       fieldMappings, 
       setFieldMappings, 
       jobName,

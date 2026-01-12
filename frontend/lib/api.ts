@@ -1,4 +1,6 @@
+import type { JobFileCategory } from "@/types/shared/job-file";
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+
 
 export interface Template {
   id: string;
@@ -105,7 +107,7 @@ export const api = {
     files: Array<{
       fileName: string;
       fileKey?: string;
-      category: 'customer_info' | 'contract_documents' | 'registry_transcript';
+      category: JobFileCategory;
     }>;
   }) => {
     const response = await fetch(`${API_BASE_URL}/jobs`, {
@@ -132,7 +134,7 @@ export const api = {
     files?: Array<{
       fileName: string;
       fileKey?: string;
-      category: 'customer_info' | 'contract_documents' | 'registry_transcript';
+      category: JobFileCategory;
     }>;
   }) => {
     const response = await fetch(`${API_BASE_URL}/jobs/${jobId}`, {
@@ -148,6 +150,24 @@ export const api = {
 
     if (!response.ok || !data.success) {
       throw new Error(data.message || 'Failed to update job');
+    }
+
+    return data.data;
+  },
+
+  deleteJobFiles: async (jobId: string, fileKeys: string[]) => {
+    const response = await fetch(`${API_BASE_URL}/jobs/${jobId}/files`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ fileKeys }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || 'Failed to delete files');
     }
 
     return data.data;
@@ -187,6 +207,46 @@ export const api = {
     }
 
     return data.data;
+  },
+
+  getFileDownloadUrl: async (fileKey: string) => {
+    const response = await fetch(
+      `${API_BASE_URL}/jobs/download-url?fileKey=${encodeURIComponent(
+        fileKey,
+      )}`,
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data?.message || 'Failed to get download URL');
+    }
+
+    return data;
+  },
+
+  getPresignedUrl: (
+    jobId: string,
+    data: {
+      fileName: string;
+      category: JobFileCategory;
+      contentType: string;
+    },
+  ) => {
+    return fetch(`${API_BASE_URL}/jobs/${jobId}/presigned-url`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        ...data,
+        jobId,
+      }),
+    })
+      .then((response) => response.json())
+      .then((payload) => {
+        return payload;
+      });
   },
 
   copyJob: async (jobId: string) => {
@@ -245,6 +305,6 @@ export const api = {
     a.click();
     window.URL.revokeObjectURL(url);
     document.body.removeChild(a);
-  },
+  },  
 };
 
