@@ -520,7 +520,8 @@ export default function FilesMapping({
                 placeholder="追加指示を入力"
                 value={instructions[field.name] || ""}
                 onChange={(e) => handleInstructionChange(field.name, e.target.value)}
-                className="text-sm w-full min-h-[60px] resize-none"
+                rows={1}
+                className="text-sm w-full resize-y overflow-auto min-h-[1.5rem] max-h-[4.5rem]"
               />
             </td>
           </tr>,

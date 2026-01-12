@@ -311,7 +311,7 @@ export default function TopPage() {
                                     ) : (
                                       <>
                                         <Copy className="mr-1 h-3 w-3" />
-                                        コピー & 編集
+                                        複製
                                       </>
                                     )}
                                   </Button>
