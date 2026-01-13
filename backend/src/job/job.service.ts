@@ -3,7 +3,7 @@ import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateJobDto } from './dto/create-job.dto';
 import { UpdateJobDto } from './dto/update-job.dto';
-import { JobFile, JobFileCategory, Prisma } from '@prisma/client';
+import { JobFile, JobFileCategory, Prisma } from '../../generated/prisma/client';
 import { AzureBlobStorageService } from 'src/azure-blob/azure-blob.service';
 import { isTemplateGroup } from 'src/common/types/interface';
 import { RunPromptDto } from './dto/run-prompt.dto';

@@ -13,7 +13,6 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { AzureBlobStorageService } from 'src/azure-blob/azure-blob.service';
-import { JobFileCategory } from '@prisma/client';
 import { JobService } from './job.service';
 import { CreateJobDto } from './dto/create-job.dto';
 import { RunPromptDto } from './dto/run-prompt.dto';
