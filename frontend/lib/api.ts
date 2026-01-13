@@ -13,6 +13,26 @@ export interface Template {
   updatedAt: string;
 }
 
+export interface RunPromptPayload {
+  jobId: string;
+  fieldName: string;
+  prompt: string;
+  note?: string;
+  fileKeys: string[];
+}
+
+export interface RunPromptResponse {
+  fieldName: string;
+  prompt: string;
+  note: string;
+  files: string[];
+  result: string;
+}
+
+export interface RunJobResponse {
+  message?: string;
+}
+
 export const api = {
   login: async (userName: string, password: string) => {
     const response = await fetch(`${API_BASE_URL}/auth/login`, {
@@ -306,5 +326,45 @@ export const api = {
     window.URL.revokeObjectURL(url);
     document.body.removeChild(a);
   },  
+  runPrompt: async (payload: RunPromptPayload): Promise<RunPromptResponse> => {
+    const response = await fetch(`${API_BASE_URL}/jobs/${encodeURIComponent(payload.jobId)}/run-prompt`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        fieldName: payload.fieldName,
+        prompt: payload.prompt,
+        note: payload.note,
+        fileKeys: payload.fileKeys,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || 'Failed to run prompt');
+    }
+
+    return data.data;
+  },
+  runJob: async (jobId: string): Promise<RunJobResponse> => {
+    const response = await fetch(`${API_BASE_URL}/jobs/${encodeURIComponent(jobId)}/run`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || 'Failed to start job');
+    }
+
+    return data.data;
+  },
 };
 

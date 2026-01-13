@@ -1,10 +1,12 @@
 "use client"
 
 import { useRouter } from "next/navigation"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { ChevronLeft, Play, Home } from "lucide-react"
+import { ChevronLeft, Play, Home, Loader2 } from "lucide-react"
 import { useUploadContext } from "@/contexts/upload-context"
+import { api } from "@/lib/api"
 
 interface PreviewProps {
   jobId: string | null
@@ -17,6 +19,30 @@ export default function Preview({ jobId }: PreviewProps) {
     loadedFileInfo,
     fieldMappings,
   } = useUploadContext()
+  const [isRunning, setIsRunning] = useState(false)
+
+  const handleRunJob = async () => {
+    if (!jobId) {
+      alert("ジョブが作成されていません。ファイルと項目の紐づけを保存してください。")
+      return
+    }
+
+    try {
+      setIsRunning(true)
+      await api.runJob(jobId)
+      alert("ジョブをバックグラウンドで実行予約しました。処理状況はトップ画面でご確認ください。")
+      router.push("/")
+    } catch (error) {
+      console.error("Failed to start job run:", error)
+      alert(
+        error instanceof Error
+          ? error.message
+          : "ジョブの実行予約に失敗しました。再度お試しください。",
+      )
+    } finally {
+      setIsRunning(false)
+    }
+  }
 
   const totalCustomerFiles = loadedFileInfo.customerInfo.length + uploadedFiles.customerInfo.length
   const totalContractFiles = loadedFileInfo.contractDocs.length + uploadedFiles.contractDocs.length
@@ -72,9 +98,18 @@ export default function Preview({ jobId }: PreviewProps) {
                 <ChevronLeft className="mr-2 h-4 w-4" />
                 戻る
               </Button>
-              <Button size="lg">
-                <Play className="mr-2 h-4 w-4" />
-                予約実行
+              <Button size="lg" onClick={handleRunJob} disabled={!jobId || isRunning}>
+                {isRunning ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    実行予約中...
+                  </>
+                ) : (
+                  <>
+                    <Play className="mr-2 h-4 w-4" />
+                    予約実行
+                  </>
+                )}
               </Button>
             </div>
           </CardContent>

@@ -5,7 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Settings, ChevronLeft, ChevronRight, Loader2, Home } from "lucide-react"
 import type React from "react"
 
-import { useState, Fragment, useEffect } from "react"
+import { useState, Fragment, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -20,11 +20,27 @@ import type { FileInfo, FileInfoByCategory } from "@/contexts/upload-context"
 import type { JobFileCategory as FileCategory } from "@/types/shared/job-file"
 interface Field {
   name: string
+  prompt?: string
+  isParent?: boolean
 }
 
 interface FieldGroup {
   groupName: string
   fields: Field[]
+}
+
+interface TemplateJsonField {
+  name: string
+  fileNames: string[]
+  fileKeys: string[]
+  note: string
+  extractedValue: string
+  prompt: string
+}
+
+interface TemplateJsonGroup {
+  groupName: string
+  fields: TemplateJsonField[]
 }
 
 interface FilesMappingProps {
@@ -60,9 +76,22 @@ const convertSchemaToFieldGroups = (schemaJson: any[]): FieldGroup[] => {
     groupName: group.groupName,
     fields: group.fields.map((field: any) => ({
       name: field.name,
+      prompt: field.prompt ?? "",
       isParent: field.isParent ?? false, // Default to false if not specified
     })),
   }))
+}
+
+const buildPromptsFromFieldGroups = (fieldGroups: FieldGroup[]): Record<string, string> => {
+  const promptEntries: Record<string, string> = {}
+  fieldGroups.forEach((group) => {
+    group.fields.forEach((field) => {
+      if (field.name) {
+        promptEntries[field.name] = field.prompt ?? ""
+      }
+    })
+  })
+  return promptEntries
 }
 
 export default function FilesMapping({
@@ -110,6 +139,7 @@ export default function FilesMapping({
           const firstTemplate = fetchedTemplates[0]
           const firstIdentifier = mapTemplateToIdentifier(firstTemplate.fileName)
           setSelectedTemplate(firstIdentifier)
+          setPrompts(buildPromptsFromFieldGroups(templateMap[firstIdentifier] || []))
         }
       } catch (error) {
         console.error("Failed to fetch templates:", error)
@@ -145,11 +175,32 @@ export default function FilesMapping({
     return initialInstructions
   })
 
+  const fileKeyLookup = useMemo(() => {
+    const lookup: Record<string, string> = {}
+    const appendFileKeys = (items?: FileInfo[]) => {
+      items?.forEach((file) => {
+        if (file.name && file.fileKey) {
+          const normalizedKey = file.fileKey.replace(/^\//, '')
+          if (normalizedKey) {
+            lookup[file.name] = normalizedKey
+          }
+        }
+      })
+    }
+
+    appendFileKeys(loadedFileInfo?.customerInfo)
+    appendFileKeys(loadedFileInfo?.contractDocs)
+    appendFileKeys(loadedFileInfo?.registryDocs)
+
+    return lookup
+  }, [loadedFileInfo])
+
   const handleTemplateChange = (newTemplate: string) => {
     setSelectedTemplate(newTemplate)
     setMappings({})
     setInstructions({})
     setFieldMappings([])
+    setPrompts(buildPromptsFromFieldGroups(templateFieldGroups[newTemplate] || []))
   }
 
   const handleCheckboxChange = (fieldName: string, fileName: string, checked: boolean) => {
@@ -200,18 +251,67 @@ export default function FilesMapping({
     setPrompts((prev) => ({ ...prev, [fieldName]: value }))
   }
 
-  const handleGenerate = (fieldName: string) => {
+  const handleGenerate = async (fieldName: string) => {
     setGeneratingStates((prev) => ({ ...prev, [fieldName]: true }))
     setOutputs((prev) => ({ ...prev, [fieldName]: "" }))
 
-    // Simulate API call (1-3 seconds)
-    setTimeout(
-      () => {
-        setOutputs((prev) => ({ ...prev, [fieldName]: "生成完了：サンプルテキストが生成されました。" }))
-        setGeneratingStates((prev) => ({ ...prev, [fieldName]: false }))
-      },
-      1000 + Math.random() * 2000,
+    if (!jobId) {
+      setOutputs((prev) => ({
+        ...prev,
+        [fieldName]: "ジョブを一時保存してから生成してください。",
+      }))
+      setGeneratingStates((prev) => ({ ...prev, [fieldName]: false }))
+      return
+    }
+
+    const promptValue = prompts[fieldName] || ""
+    const mapping = fieldMappings.find((mapping) => mapping.fieldId === fieldName)
+    const noteValue = instructions[fieldName] || mapping?.note
+
+    if (!mapping || mapping.fileIds.length === 0) {
+      setOutputs((prev) => ({
+        ...prev,
+        [fieldName]: "ファイルを選択してください。",
+      }))
+      setGeneratingStates((prev) => ({ ...prev, [fieldName]: false }))
+      return
+    }
+
+    const missingKeys = mapping.fileIds.filter((fileId) => !fileKeyLookup[fileId])
+    if (missingKeys.length > 0) {
+      setOutputs((prev) => ({
+        ...prev,
+        [fieldName]: "選択したファイルのキーが利用できません。ジョブを保存してから再試行してください。",
+      }))
+      setGeneratingStates((prev) => ({ ...prev, [fieldName]: false }))
+      return
+    }
+
+    const fileKeys = Array.from(
+      new Set(
+        mapping.fileIds
+          .map((fileId) => fileKeyLookup[fileId])
+          .filter((key): key is string => Boolean(key)),
+      ),
     )
+
+    try {
+      const result = await api.runPrompt({
+        jobId,
+        fieldName,
+        prompt: promptValue,
+        note: noteValue,
+        fileKeys,
+      })
+      setOutputs((prev) => ({ ...prev, [fieldName]: result.result }))
+    } catch (error) {
+      setOutputs((prev) => ({
+        ...prev,
+        [fieldName]: error instanceof Error ? error.message : "生成に失敗しました",
+      }))
+    } finally {
+      setGeneratingStates((prev) => ({ ...prev, [fieldName]: false }))
+    }
   }
 
   const handlePromptRegister = async () => {
@@ -306,45 +406,42 @@ export default function FilesMapping({
       )
 
       // Build template_json from fieldMappings in grouped format
-      const templateJson = currentFieldGroups.map((group) => {
-        const groupFields = group.fields
-          .map((field) => {
-            const mapping = fieldMappings.find((m) => m.fieldId === field.name)
-            if (!mapping) return null
+      const templateJson: TemplateJsonGroup[] = currentFieldGroups
+        .map((group) => {
+          const groupFields: TemplateJsonField[] = group.fields
+            .map((field) => {
+              const mapping = fieldMappings.find((m) => m.fieldId === field.name)
+              if (!mapping) return null
 
-            // Extract fileNames and fileKeys from fileIds
-            const fileNames: string[] = []
-            const fileKeys: string[] = []
-            
-            mapping.fileIds.forEach((fileId) => {
-              fileNames.push(fileId)
-              const fileKey = fileKeyMap[fileId]
-              if (fileKey) {
-                fileKeys.push(fileKey)
+              // Extract fileNames and fileKeys from fileIds
+              const fileNames: string[] = []
+              const fileKeys: string[] = []
+
+              mapping.fileIds.forEach((fileId) => {
+                fileNames.push(fileId)
+                const fileKey = fileKeyMap[fileId]
+                if (fileKey) {
+                  fileKeys.push(fileKey)
+                }
+              })
+
+              return {
+                name: field.name,
+                fileNames,
+                fileKeys,
+                note: mapping.note || "",
+                extractedValue: mapping.extractedValue || "",
+                prompt: prompts[field.name] || "",
               }
             })
+            .filter((field): field is TemplateJsonField => field !== null)
 
-            return {
-              name: field.name,
-              fileNames,
-              fileKeys,
-              note: mapping.note || "",
-              extractedValue: mapping.extractedValue || "",
-            }
-          })
-          .filter((field) => field !== null) as Array<{
-            name: string
-            fileNames: string[]
-            fileKeys: string[]
-            note: string
-            extractedValue: string
-          }>
-
-        return {
-          groupName: group.groupName,
-          fields: groupFields,
-        }
-      }).filter((group) => group.fields.length > 0)
+          return {
+            groupName: group.groupName,
+            fields: groupFields,
+          }
+        })
+        .filter((group) => group.fields.length > 0)
 
       const jobData = {
         userId: user.id,
@@ -379,31 +476,50 @@ export default function FilesMapping({
           const isGroupedFormat = fetchedJob.templateJson.length > 0 && 
             fetchedJob.templateJson[0]?.groupName !== undefined
           
-          let flatMappings: Array<{ fieldId: string; fileIds: string[]; note: string; extractedValue: string }> = []
+          let flatMappings: Array<{
+            fieldId: string
+            fileIds: string[]
+            note: string
+            extractedValue: string
+            prompt?: string
+          }> = []
+          const promptEntries: Record<string, string> = {}
           
           if (isGroupedFormat) {
             // Transform from grouped format to flat format
-            fetchedJob.templateJson.forEach((group: { groupName: string; fields: Array<{ name: string; fileNames: string[]; fileKeys?: string[]; note: string; extractedValue: string }> }) => {
-              group.fields.forEach((field) => {
-                flatMappings.push({
-                  fieldId: field.name,
-                  fileIds: field.fileNames || [],
-                  note: field.note || "",
-                  extractedValue: field.extractedValue || "",
+            fetchedJob.templateJson.forEach(
+              (group: TemplateJsonGroup) => {
+                group.fields.forEach((field) => {
+                  flatMappings.push({
+                    fieldId: field.name,
+                    fileIds: field.fileNames || [],
+                    note: field.note || "",
+                    extractedValue: field.extractedValue || "",
+                    prompt: field.prompt || "",
+                  })
+                  promptEntries[field.name] = field.prompt || ""
                 })
-              })
-            })
+              },
+            )
           } else {
             // Old flat format (backward compatibility)
-            flatMappings = fetchedJob.templateJson.map((mapping: any) => ({
-              fieldId: mapping.fieldId || "",
-              fileIds: mapping.fileIds || mapping.fileNames || [],
-              note: mapping.note || "",
-              extractedValue: mapping.extractedValue || "",
-            }))
+            flatMappings = fetchedJob.templateJson.map((mapping: any) => {
+              const promptValue = mapping.prompt || ""
+              if (mapping.fieldId) {
+                promptEntries[mapping.fieldId] = promptValue
+              }
+              return {
+                fieldId: mapping.fieldId || "",
+                fileIds: mapping.fileIds || mapping.fileNames || [],
+                note: mapping.note || "",
+                extractedValue: mapping.extractedValue || "",
+                prompt: promptValue,
+              }
+            })
           }
           
           setFieldMappings(flatMappings)
+          setPrompts(promptEntries)
           
           // Update mappings state
           const newMappings: Record<string, Record<string, boolean>> = {}
@@ -714,6 +830,9 @@ export default function FilesMapping({
                     <Fragment key={`${group.groupName}-${groupIndex}`}>
                       {group.fields.map((field, fieldIndex) => {
                         const isFirstInGroup = fieldIndex === 0
+                        const mapping = fieldMappings.find((m) => m.fieldId === field.name)
+                        const selectedFiles = mapping?.fileIds || []
+                        const noteForField = instructions[field.name] || mapping?.note || ""
                         return (
                           <tr key={`${group.groupName}-${field.name}`} className="border-b hover:bg-slate-50">
                             {isFirstInGroup && (
@@ -726,12 +845,33 @@ export default function FilesMapping({
                             )}
                             <td className="px-4 py-3 align-top font-medium text-sm border-r col-field">{field.name}</td>
                             <td className="px-4 py-3 align-top border-r col-instruction">
-                              <Textarea
-                                placeholder="プロンプトを入力してください"
-                                value={prompts[field.name] || ""}
-                                onChange={(e) => handlePromptChange(field.name, e.target.value)}
-                                className="min-h-[80px] text-sm"
-                              />
+                              <div className="space-y-3">
+                                <Textarea
+                                  placeholder="プロンプトを入力してください"
+                                  value={prompts[field.name] || ""}
+                                  onChange={(e) => handlePromptChange(field.name, e.target.value)}
+                                  className="min-h-[80px] text-sm"
+                                />
+                                <div className="space-y-1 text-xs">
+                                  <p className="font-semibold">選択されたファイル</p>
+                                  {selectedFiles.length > 0 ? (
+                                    selectedFiles.map((fileName) => (
+                                      <div key={fileName} className="flex items-center gap-2 text-xs text-slate-700">
+                                        <Checkbox checked disabled />
+                                        <span className="truncate">{fileName}</span>
+                                      </div>
+                                    ))
+                                  ) : (
+                                    <p className="text-muted-foreground">ファイルが選択されていません</p>
+                                  )}
+                                </div>
+                                <div className="text-xs">
+                                  <p className="font-semibold">追加指示</p>
+                                  <p className="text-muted-foreground">
+                                    {noteForField || "未入力"}
+                                  </p>
+                                </div>
+                              </div>
                             </td>
                             <td className={`px-4 py-3 align-top text-center border col-checkbox`}>
                               <Button

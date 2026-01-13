@@ -1,18 +1,77 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateJobDto } from './dto/create-job.dto';
 import { UpdateJobDto } from './dto/update-job.dto';
-import { JobFileCategory, Prisma } from '@prisma/client';
+import { JobFile, JobFileCategory, Prisma } from '@prisma/client';
 import { AzureBlobStorageService } from 'src/azure-blob/azure-blob.service';
 import { isTemplateGroup } from 'src/common/types/interface';
+import { RunPromptDto } from './dto/run-prompt.dto';
+import OpenAI from 'openai';
+import { PDFParse } from 'pdf-parse';
+interface TemplateJsonField {
+  name: string;
+  fileNames?: string[];
+  fileKeys?: string[];
+  note?: string;
+  prompt?: string;
+  extractedValue?: string;
+}
+
+interface TemplateJsonGroup {
+  groupName: string;
+  fields: TemplateJsonField[];
+}
+
+interface DocumentContent {
+  fileKey: string;
+  fileName: string;
+  text: string;
+}
+
+interface PromptResult {
+  fieldName: string;
+  prompt: string;
+  note: string;
+  files: string[];
+  result: string;
+}
+
+interface AzureOpenAiConfig {
+  apiKey: string;
+  endpoint: string;
+  deployment: string;
+  apiVersion: string;
+}
 
 @Injectable()
 export class JobService {
+  private readonly openAiClient: OpenAI | null;
+  private readonly azureOpenAiConfig: AzureOpenAiConfig | null;
+
   constructor(
     private prisma: PrismaService,
     private readonly azureBlobStorage: AzureBlobStorageService,
-  ) {}
+  ) {
+    const azureApiKey = process.env.AZURE_OPENAI_API_KEY;
+    const azureEndpoint = process.env.AZURE_OPENAI_ENDPOINT;
+    if (!azureApiKey || !azureEndpoint) {
+      this.azureOpenAiConfig = null;
+    } else {
+      this.azureOpenAiConfig = {
+        apiKey: azureApiKey,
+        endpoint: azureEndpoint.replace(/\/$/, ''),
+        deployment: process.env.AZURE_OPENAI_DEPLOYMENT_NAME || 'gpt-5.1',
+        apiVersion: process.env.AZURE_OPENAI_API_VERSION || '2024-10-21',
+      };
+    }
+
+    this.openAiClient = this.azureOpenAiConfig
+      ? null
+      : process.env.OPENAI_API_KEY
+        ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+        : null;
+  }
 
   async create(createJobDto: CreateJobDto) {
     const { files, ...jobData } = createJobDto;
@@ -30,6 +89,7 @@ export class JobService {
             select: {
               id: true,
               displayName: true,
+              systemPrompt: true,
             },
           },
         },
@@ -56,6 +116,7 @@ export class JobService {
             select: {
               id: true,
               displayName: true,
+              systemPrompt: true,
             },
           },
         },
@@ -88,6 +149,7 @@ export class JobService {
             select: {
               id: true,
               displayName: true,
+              systemPrompt: true,
             },
           },
         },
@@ -122,6 +184,7 @@ export class JobService {
             select: {
               id: true,
               displayName: true,
+              systemPrompt: true,
             },
           },
         },
@@ -140,6 +203,7 @@ export class JobService {
           select: {
             id: true,
             displayName: true,
+            systemPrompt: true,
           },
         },
         user: {
@@ -167,6 +231,7 @@ export class JobService {
           select: {
             id: true,
             displayName: true,
+            systemPrompt: true,
           },
         },
       },
@@ -174,6 +239,386 @@ export class JobService {
         createdAt: 'desc',
       },
     });
+  }
+
+  async runPrompt(jobId: string, runPromptDto: RunPromptDto): Promise<PromptResult> {
+    const job = await this.findOne(jobId);
+    const field = this.findTemplateField(job.templateJson, runPromptDto.fieldName);
+    if (!field) {
+      throw new NotFoundException(`フィールド ${runPromptDto.fieldName} が見つかりません`);
+    }
+
+    console.log(`Running prompt for job ${jobId}, field ${runPromptDto.fileKeys}`);
+    const providedFileKeys =
+      (runPromptDto.fileKeys || [])
+        .map((key) => key.replace(/^\//, ''))
+        .filter(Boolean);
+    const fileKeys =
+      providedFileKeys.length > 0
+        ? Array.from(new Set(providedFileKeys))
+        : this.collectFileKeys(field, job.files);
+
+    if (fileKeys.length === 0) {
+      return {
+        fieldName: runPromptDto.fieldName,
+        prompt: (runPromptDto.prompt?.trim() || field.prompt?.trim() || '').trim(),
+        note: (runPromptDto.note?.trim() || field.note?.trim() || '').trim(),
+        files: [],
+        result: "",
+      };
+    }
+
+    const documents = await this.extractDocuments(fileKeys, job.files);
+    const promptText = (runPromptDto.prompt?.trim() || field.prompt?.trim() || '').trim();
+    if (!promptText) {
+      throw new BadRequestException('プロンプトを入力してください');
+    }
+
+    const note = (runPromptDto.note?.trim() || field.note?.trim() || '').trim();
+    const systemPrompt =
+      job.template?.systemPrompt || 'You are a helpful legal assistant that summarizes PDF content accurately.';
+
+    const aggregatedText = documents
+      .map((doc) => `--- ${doc.fileName} ---\n${doc.text.trim() || '内容なし'}`)
+      .join('\n\n');
+
+    const payload = [
+      note ? `追加指示:\n${note}` : '',
+      `ファイル内容:\n${aggregatedText}`,
+      `プロンプト:\n${promptText}`,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+
+    const hasAiClient = Boolean(this.azureOpenAiConfig || this.openAiClient);
+    const resultText = hasAiClient
+      ? await this.requestOpenAi(systemPrompt, payload)
+      : this.buildFallbackResponse(promptText, documents);
+
+    return {
+      fieldName: runPromptDto.fieldName,
+      prompt: promptText,
+      note,
+      files: documents.map((doc) => doc.fileName),
+      result: resultText,
+    };
+  }
+
+  async startJobRun(jobId: string): Promise<void> {
+    const job = await this.findOne(jobId);
+    if (job.status === 'processing') {
+      throw new BadRequestException('ジョブはすでに処理中です');
+    }
+
+    const templateGroups = this.normalizeTemplateJson(job.templateJson);
+    if (templateGroups.length === 0) {
+      throw new BadRequestException('生成対象の項目がありません');
+    }
+
+    await this.prisma.job.update({
+      where: { id: jobId },
+      data: {
+        status: 'processing',
+        completedAt: null,
+      },
+    });
+
+    console.log(`Starting background job run for job ${jobId}`);
+
+    void this.processJobFields(jobId, templateGroups).catch((error) => {
+      console.error(`Background job run failed for job ${jobId}:`, error);
+    });
+  }
+
+  private async processJobFields(jobId: string, templateGroups?: TemplateJsonGroup[]): Promise<void> {
+    const groups = templateGroups ?? this.normalizeTemplateJson((await this.findOne(jobId)).templateJson);
+    if (groups.length === 0) {
+      await this.prisma.job.update({
+        where: { id: jobId },
+        data: {
+          status: 'draft',
+          completedAt: null,
+        },
+      });
+      return;
+    }
+
+    const workingGroups = groups.map((group) => ({
+      groupName: group.groupName || 'その他',
+      fields: group.fields.map((field) => ({ ...field })),
+    }));
+
+    try {
+      for (const group of workingGroups) {
+        for (const field of group.fields) {
+          const runResult = await this.runPrompt(jobId, {
+            fieldName: field.name,
+            prompt: field.prompt,
+            note: field.note,
+            fileKeys: field.fileKeys,
+          });
+          field.extractedValue = runResult.result;
+        }
+      }
+
+      await this.prisma.job.update({
+        where: { id: jobId },
+        data: {
+          status: 'completed',
+          completedAt: new Date(),
+          templateJson: workingGroups as Prisma.InputJsonValue,
+        },
+      });
+    } catch (error) {
+      await this.prisma.job.update({
+        where: { id: jobId },
+        data: {
+          status: 'draft',
+          completedAt: null,
+        },
+      });
+      throw error;
+    }
+  }
+
+  private findTemplateField(templateJson: unknown, fieldName: string): TemplateJsonField | undefined {
+    if (!Array.isArray(templateJson)) {
+      return undefined;
+    }
+
+    for (const entry of templateJson) {
+      if (isTemplateGroup(entry)) {
+        const match = entry.fields.find((field) => field.name === fieldName);
+        if (match) {
+          return match;
+        }
+      } else if (entry && typeof entry === 'object') {
+        const objectEntry = entry as Record<string, unknown>;
+        const entryName = (objectEntry.fieldId as string) || (objectEntry.name as string);
+        if (entryName === fieldName) {
+          return {
+            name: entryName,
+            fileNames: (objectEntry.fileNames as string[]) || (objectEntry.fileIds as string[]),
+            fileKeys: objectEntry.fileKeys as string[],
+            note: objectEntry.note as string,
+            prompt: objectEntry.prompt as string,
+          };
+        }
+      }
+    }
+
+    return undefined;
+  }
+
+  private normalizeTemplateJson(templateJson: unknown): TemplateJsonGroup[] {
+    if (!Array.isArray(templateJson)) {
+      return [];
+    }
+
+    const groups: TemplateJsonGroup[] = [];
+
+    const groupedFormat =
+      templateJson.length > 0 &&
+      typeof (templateJson[0] as TemplateJsonGroup)?.groupName === 'string' &&
+      Array.isArray((templateJson[0] as TemplateJsonGroup).fields);
+
+    if (groupedFormat) {
+      (templateJson as TemplateJsonGroup[]).forEach((group) => {
+        const normalizedFields = Array.isArray(group.fields)
+          ? group.fields
+              .map((field) => this.normalizeTemplateField(field))
+              .filter((field): field is TemplateJsonField => field !== null)
+          : [];
+
+        if (normalizedFields.length > 0) {
+          groups.push({
+            groupName: group.groupName || 'その他',
+            fields: normalizedFields,
+          });
+        }
+      });
+
+      return groups;
+    }
+
+    const flatFields = templateJson
+      .map((field) => this.normalizeTemplateField(field))
+      .filter((field): field is TemplateJsonField => field !== null);
+
+    if (flatFields.length === 0) {
+      return [];
+    }
+
+    return [
+      {
+        groupName: 'グループ',
+        fields: flatFields,
+      },
+    ];
+  }
+
+  private normalizeTemplateField(field: any): TemplateJsonField | null {
+    if (!field) {
+      return null;
+    }
+
+    const name = typeof field.name === 'string' ? field.name : typeof field.fieldId === 'string' ? field.fieldId : '';
+    if (!name) {
+      return null;
+    }
+
+    return {
+      name,
+      fileNames: this.toStringArray(field.fileNames ?? field.fileIds),
+      fileKeys: this.toStringArray(field.fileKeys),
+      note: typeof field.note === 'string' ? field.note : '',
+      prompt: typeof field.prompt === 'string' ? field.prompt : '',
+      extractedValue: typeof field.extractedValue === 'string' ? field.extractedValue : '',
+    };
+  }
+
+  private toStringArray(value: unknown): string[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return value.filter((item): item is string => typeof item === 'string' && item.trim() !== '');
+  }
+
+  private collectFileKeys(field: TemplateJsonField, jobFiles: JobFile[]): string[] {
+    const normalizedKeys = new Set<string>();
+
+    ;(field.fileKeys || []).forEach((key) => {
+      if (key) {
+        normalizedKeys.add(key.replace(/^\//, ''));
+      }
+    });
+
+    const targetFileNames = new Set<string>(field.fileNames || []);
+
+    jobFiles.forEach((file) => {
+      const normalizedKey = file.fileKey?.replace(/^\//, '');
+      if (!normalizedKey) {
+        return;
+      }
+      if (targetFileNames.has(file.fileName || '')) {
+        normalizedKeys.add(normalizedKey);
+      }
+    });
+
+    return Array.from(normalizedKeys);
+  }
+
+  private async extractDocuments(fileKeys: string[], jobFiles: JobFile[]): Promise<DocumentContent[]> {
+    const tasks = fileKeys.map(async (key) => {
+      const downloadUrl = await this.azureBlobStorage.generateDownloadUrl(key);
+      const response = await fetch(downloadUrl);
+      if (!response.ok) {
+        throw new BadRequestException(`ファイル (${key}) のダウンロードに失敗しました`);
+      }
+      let text = '';
+      try {
+        const parsed = new PDFParse({url: downloadUrl});
+        const result = await parsed.getText();
+        text = result.text;
+      } catch (error) {
+        throw new BadRequestException(`PDFの解析に失敗しました (${key}) : ${error.message}`);
+      }
+
+      const jobFile = jobFiles.find(
+        (file) => file.fileKey?.replace(/^\//, '') === key,
+      );
+      const fileName =
+        jobFile?.fileName || key.split('/').pop() || `blob-${key}`;
+
+      return {
+        fileKey: key,
+        fileName,
+        text,
+      };
+    });
+
+    return Promise.all(tasks);
+  }
+
+  private async requestOpenAi(systemPrompt: string, userPrompt: string): Promise<string> {
+    if (this.azureOpenAiConfig) {
+      return this.requestAzureOpenAi(systemPrompt, userPrompt);
+    }
+
+    if (!this.openAiClient) {
+      throw new BadRequestException('OpenAI APIキーが設定されていません');
+    }
+
+    const response = await this.openAiClient.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      temperature: 0.2,
+    });
+
+    const content = response?.choices?.[0]?.message?.content?.trim();
+    if (!content) {
+      throw new BadRequestException('AIからの応答を取得できませんでした');
+    }
+
+    return content;
+  }
+
+  private async requestAzureOpenAi(systemPrompt: string, userPrompt: string): Promise<string> {
+    const { apiKey, endpoint, deployment, apiVersion } = this.azureOpenAiConfig as AzureOpenAiConfig;
+    const url = new URL(
+      `/openai/deployments/${deployment}/chat/completions`,
+      `${endpoint}/`,
+    );
+    url.searchParams.set('api-version', apiVersion);
+
+    const response = await fetch(url.toString(), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'api-key': apiKey,
+      },
+      body: JSON.stringify({
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.2,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new BadRequestException(
+        `OpenAI API request failed (${response.status}): ${errorText}`,
+      );
+    }
+
+    const body = await response.json();
+    const content = body?.choices?.[0]?.message?.content?.trim();
+    if (!content) {
+      throw new BadRequestException('AIからの応答を取得できませんでした');
+    }
+
+    return content;
+  }
+
+  private buildFallbackResponse(prompt: string, documents: DocumentContent[]): string {
+    const fileList = documents.map((doc) => doc.fileName).join(', ');
+    const excerpt = documents
+      .map((doc) => `${doc.fileName}:\n${doc.text.slice(0, 200).trim() || '内容なし'}`)
+      .join('\n\n');
+
+    return [
+      'OpenAI APIキーが設定されていないため、簡易レスポンスを生成しました。',
+      `プロンプト: ${prompt}`,
+      `選択ファイル: ${fileList || 'なし'}`,
+      'ファイル抜粋:',
+      excerpt || 'テキストが取得できませんでした。',
+    ].join('\n\n');
   }
 
   async copyJob(jobId: string) {

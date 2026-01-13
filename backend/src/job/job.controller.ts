@@ -1,8 +1,22 @@
-import { Controller, Post, Put, Get, Delete, Query, Body, Param, HttpCode, HttpStatus, BadRequestException, Res } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Put,
+  Get,
+  Delete,
+  Query,
+  Body,
+  Param,
+  HttpCode,
+  HttpStatus,
+  Res,
+  BadRequestException,
+} from '@nestjs/common';
 import { AzureBlobStorageService } from 'src/azure-blob/azure-blob.service';
 import { JobFileCategory } from '@prisma/client';
 import { JobService } from './job.service';
 import { CreateJobDto } from './dto/create-job.dto';
+import { RunPromptDto } from './dto/run-prompt.dto';
 import { UpdateJobDto } from './dto/update-job.dto';
 import type { Response } from 'express';
 
@@ -157,6 +171,38 @@ export class JobController {
         success: false,
         message: error.message || 'Failed to generate Excel file',
       });
+    }
+  }
+
+  @Post(':jobId/run-prompt')
+  async runPrompt(@Param('jobId') jobId: string, @Body() runPromptDto: RunPromptDto): Promise<{ success: boolean; data?: any; message?: string }> {
+    try {
+      const result = await this.jobService.runPrompt(jobId, runPromptDto);
+      return {
+        success: true,
+        data: result,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to run prompt',
+      };
+    }
+  }
+
+  @Post(':jobId/run')
+  async runJob(@Param('jobId') jobId: string): Promise<{ success: boolean; data?: any; message?: string }> {
+    try {
+      await this.jobService.startJobRun(jobId);
+      return {
+        success: true,
+        data: { message: 'ジョブをバックグラウンドで実行予約しました' },
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to run job',
+      };
     }
   }
 }
