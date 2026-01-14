@@ -3,8 +3,13 @@
 import type React from "react"
 
 import { createContext, useContext, useState, useCallback, type ReactNode } from "react"
+import { useAuth } from "@/contexts/auth-context"
 import { api } from "@/lib/api"
-import { JobFileCategory } from "@/types/shared/job-file"
+import { JobFileCategory, JobFileInput } from "@/types/shared/job-file"
+import { uploadToBlob } from "@/lib/blob-upload"
+
+type UploadCategoryKey = "customerInfo" | "contractDocs" | "registryDocs"
+const CATEGORY_KEYS: UploadCategoryKey[] = ["customerInfo", "contractDocs", "registryDocs"]
 
 interface FieldMapping {
   fieldId: string
@@ -52,6 +57,19 @@ interface UploadContextType {
   loadJobData: (jobId: string) => Promise<void>
   isLoadingJob: boolean
   resetContext: () => void
+  deletedFiles: {
+    customerInfo: Set<string>
+    contractDocs: Set<string>
+    registryDocs: Set<string>
+  }
+  setDeletedFiles: React.Dispatch<
+    React.SetStateAction<{
+      customerInfo: Set<string>
+      contractDocs: Set<string>
+      registryDocs: Set<string>
+    }>
+  >
+  autoSaveJob: (templateId?: string) => Promise<string | null>
 }
 
 const UploadContext = createContext<UploadContextType | undefined>(undefined)
@@ -85,6 +103,12 @@ export function UploadProvider({ children }: { children: ReactNode }) {
   const [jobName, setJobName] = useState<string>("")
   const [jobId, setJobId] = useState<string | null>(null)
   const [isLoadingJob, setIsLoadingJob] = useState(false)
+  const { user } = useAuth()
+  const [deletedFiles, setDeletedFiles] = useState<Record<UploadCategoryKey, Set<string>>>({
+    customerInfo: new Set(),
+    contractDocs: new Set(),
+    registryDocs: new Set(),
+  })
 
   const resetContext = useCallback(() => {
     setUploadedFiles({
@@ -100,9 +124,19 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     setFieldMappings([])
     setJobName("")
     setJobId(null)
+    setDeletedFiles({
+      customerInfo: new Set(),
+      contractDocs: new Set(),
+      registryDocs: new Set(),
+    })
   }, [])
 
   const loadJobData = useCallback(async (loadJobId: string) => {
+    setDeletedFiles({
+      customerInfo: new Set(),
+      contractDocs: new Set(),
+      registryDocs: new Set(),
+    })
     try {
       setIsLoadingJob(true)
       const jobData = await api.getJob(loadJobId)
@@ -190,6 +224,181 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  const autoSaveJob = useCallback(
+    async (templateId?: string): Promise<string | null> => {
+      if (!user || !jobName.trim()) {
+        return null
+      }
+
+      try {
+        let templateIdToUse = templateId
+        if (!templateIdToUse) {
+          const templates = await api.getTemplates()
+          if (templates.length > 0) {
+            templateIdToUse = templates[0].id
+          } else {
+            return null
+          }
+        }
+
+        let currentJobId = jobId
+
+        const baseJobData = {
+          userId: user.id,
+          templateId: templateIdToUse,
+          title: jobName,
+          templateJson: fieldMappings,
+          files: [],
+        }
+
+        if (!currentJobId) {
+          const draftJob = await api.createJob(baseJobData)
+          setJobId(draftJob.id)
+          currentJobId = draftJob.id
+        } else {
+          await api.updateJob(currentJobId, {
+            title: jobName,
+            templateJson: fieldMappings,
+          })
+        }
+
+        if (!currentJobId) {
+          return null
+        }
+
+        const files: JobFileInput[] = []
+        const deletedFilesSnapshot = deletedFiles
+        const deletedFileKeys = CATEGORY_KEYS.flatMap((categoryKey) =>
+          Array.from(deletedFilesSnapshot[categoryKey])
+            .map((fileName) =>
+              loadedFileInfo[categoryKey].find((file) => file.name === fileName)?.fileKey,
+            )
+            .filter((fileKey): fileKey is string => Boolean(fileKey)),
+        )
+
+        const pushLoadedFiles = (
+          categoryKey: UploadCategoryKey,
+          category: JobFileCategory,
+        ) => {
+          loadedFileInfo[categoryKey]
+            .filter((f) => !deletedFiles[categoryKey].has(f.name))
+            .forEach((f) => {
+              files.push({
+                fileName: f.name,
+                fileKey: f.fileKey,
+                category,
+              })
+            })
+        }
+
+        pushLoadedFiles("customerInfo", "customer_info")
+        pushLoadedFiles("contractDocs", "contract_documents")
+        pushLoadedFiles("registryDocs", "registry_transcript")
+
+        const uploadNewFiles = async (
+          categoryKey: UploadCategoryKey,
+          category: JobFileCategory,
+        ): Promise<Array<{ name: string; fileKey: string }>> => {
+          const pendingFiles = uploadedFiles[categoryKey]
+          if (pendingFiles.length === 0) {
+            return []
+          }
+
+          const uploadResults = await Promise.all(
+            pendingFiles.map(async (file) => {
+              const fileKey = await uploadToBlob(currentJobId, category, file)
+              return { file, fileKey }
+            }),
+          )
+
+          const draftFiles: Array<{ name: string; fileKey: string }> = uploadResults.map(
+            ({ file, fileKey }) => {
+              files.push({
+                fileName: file.name,
+                fileKey,
+                category,
+              })
+              return { name: file.name, fileKey }
+            },
+          )
+
+          return draftFiles
+        }
+
+        const newCustomerFiles = await uploadNewFiles("customerInfo", "customer_info")
+        const newContractFiles = await uploadNewFiles("contractDocs", "contract_documents")
+        const newRegistryFiles = await uploadNewFiles("registryDocs", "registry_transcript")
+
+        const appendDraftFiles = (
+          categoryKey: UploadCategoryKey,
+          draftFiles: Array<{ name: string; fileKey: string }>,
+        ) => {
+          if (draftFiles.length === 0) {
+            return
+          }
+
+          const draftNames = new Set(draftFiles.map((file) => file.name))
+
+          setUploadedFiles((prev) => ({
+            ...prev,
+            [categoryKey]: prev[categoryKey].filter((file) => !draftNames.has(file.name)),
+          }))
+
+          setLoadedFileInfo((prev) => ({
+            ...prev,
+            [categoryKey]: [
+              ...prev[categoryKey],
+              ...draftFiles.map((file) => ({
+                name: file.name,
+                fileKey: file.fileKey,
+              })),
+            ],
+          }))
+        }
+
+        appendDraftFiles("customerInfo", newCustomerFiles)
+        appendDraftFiles("contractDocs", newContractFiles)
+        appendDraftFiles("registryDocs", newRegistryFiles)
+
+        if (currentJobId && deletedFileKeys.length > 0) {
+          await api.deleteJobFiles(currentJobId, deletedFileKeys)
+          setLoadedFileInfo((prev) => ({
+            customerInfo: prev.customerInfo.filter((file) => !deletedFilesSnapshot.customerInfo.has(file.name)),
+            contractDocs: prev.contractDocs.filter((file) => !deletedFilesSnapshot.contractDocs.has(file.name)),
+            registryDocs: prev.registryDocs.filter((file) => !deletedFilesSnapshot.registryDocs.has(file.name)),
+          }))
+          setDeletedFiles({
+            customerInfo: new Set(),
+            contractDocs: new Set(),
+            registryDocs: new Set(),
+          })
+        }
+
+        await api.updateJob(currentJobId, {
+          files,
+        })
+
+        return currentJobId
+      } catch (err) {
+        console.error("Auto-save job failed:", err)
+        return null
+      }
+    },
+    [
+      user,
+      jobName,
+      jobId,
+      fieldMappings,
+      uploadedFiles,
+      loadedFileInfo,
+      deletedFiles,
+      setJobId,
+      setUploadedFiles,
+      setLoadedFileInfo,
+      setDeletedFiles,
+    ],
+  )
+
   const canAccessStep = (step: number): boolean => {
     if (step === 1) return true // Step 1 luôn accessible
 
@@ -233,6 +442,9 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       loadJobData,
       isLoadingJob,
       resetContext,
+      deletedFiles,
+      setDeletedFiles,
+      autoSaveJob,
     }}>
       {children}
     </UploadContext.Provider>

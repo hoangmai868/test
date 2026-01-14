@@ -1,6 +1,7 @@
 "use client"
 
-import { useSearchParams } from "next/navigation"
+import type { MouseEvent } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
 import { Check } from "lucide-react"
@@ -20,14 +21,34 @@ const steps: Step[] = [
 
 export function UploadStepper() {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const currentStep = searchParams.get("step") || "1"
   const currentStepIndex = steps.findIndex((step) => step.step === currentStep)
-  const { canAccessStep } = useUploadContext()
+  const { canAccessStep, autoSaveJob, jobId } = useUploadContext()
 
   const buildStepHref = (stepValue: string) => {
     const params = new URLSearchParams(searchParams.toString())
     params.set("step", stepValue)
     return `/upload?${params.toString()}`
+  }
+
+  const handleStepClick = async (stepValue: string, event: MouseEvent<HTMLAnchorElement>) => {
+    const shouldAutoSave = (stepValue === "2" || stepValue === "3") && currentStep === "1"
+    if (!shouldAutoSave) {
+      return
+    }
+
+    event.preventDefault()
+    const draftId = await autoSaveJob()
+    const params = new URLSearchParams(searchParams.toString())
+    params.set("step", stepValue)
+    const nextJobId = draftId ?? jobId ?? searchParams.get("jobId")
+    if (nextJobId) {
+      params.set("jobId", nextJobId)
+    } else {
+      params.delete("jobId")
+    }
+    router.push(`/upload?${params.toString()}`)
   }
 
   return (
@@ -43,6 +64,7 @@ export function UploadStepper() {
               {isClickable ? (
                 <Link
                   href={buildStepHref(step.step)}
+                  onClick={(event) => handleStepClick(step.step, event)}
                   className={cn(
                     "group relative flex items-center gap-3 rounded-lg px-4 py-2 transition-colors",
                     isCurrent ? "bg-blue-50" : "hover:bg-gray-50",

@@ -25,20 +25,10 @@ function UploadContent() {
     loadJobData,
     isLoadingJob,
     resetContext,
+    setDeletedFiles,
   } = useUploadContext()
   const [loadedJobId, setLoadedJobId] = useState<string | null>(null)
   
-  // Track deleted files (files that were loaded from API but are now deleted)
-  const [deletedFiles, setDeletedFiles] = useState<{
-    customerInfo: Set<string>
-    contractDocs: Set<string>
-    registryDocs: Set<string>
-  }>({
-    customerInfo: new Set(),
-    contractDocs: new Set(),
-    registryDocs: new Set(),
-  })
-
   const [dragStates, setDragStates] = useState<{
     customerInfo: boolean
     contractDocs: boolean
@@ -91,7 +81,7 @@ function UploadContent() {
       }
     }
     loadJob()
-  }, [urlJobId, loadedJobId, loadJobData, resetContext, router])
+  }, [urlJobId, loadedJobId, loadJobData, resetContext, router, setDeletedFiles])
 
   // Reset loadedJobId when navigating away (no jobId in URL)
   useEffect(() => {
@@ -103,7 +93,7 @@ function UploadContent() {
         registryDocs: new Set(),
       })
     }
-  }, [urlJobId, loadedJobId])
+  }, [urlJobId, loadedJobId, setDeletedFiles])
 
   useEffect(() => {
     const currentStepNum = Number.parseInt(step)
@@ -126,9 +116,6 @@ function UploadContent() {
   if (step === "1") {
     return (
       <UploadFiles
-        jobId={jobId}
-        deletedFiles={deletedFiles}
-        setDeletedFiles={setDeletedFiles}
         onNext={(draftJobId) => {
           router.push(draftJobId ? `/upload?step=2&jobId=${draftJobId}` : "/upload?step=2")
         }}

@@ -10,13 +10,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Upload, Trash2, Home } from "lucide-react"
 import { useUploadContext } from "@/contexts/upload-context"
-import { useAuth } from "@/contexts/auth-context"
-import { JobFileCategory, JobFileInput } from "@/types/shared/job-file"
-import { uploadToBlob } from "@/lib/blob-upload"
 import { api } from "@/lib/api"
 
 type CategoryKey = "customerInfo" | "contractDocs" | "registryDocs"
-const CATEGORY_KEYS: CategoryKey[] = ["customerInfo", "contractDocs", "registryDocs"]
 const CATEGORY_SECTIONS: { key: CategoryKey; title: string }[] = [
   { key: "customerInfo", title: "顧客情報" },
   { key: "contractDocs", title: "契約書類等" },
@@ -29,38 +25,22 @@ type CombinedFile = {
 }
 
 interface UploadFilesProps {
-  jobId: string | null
-  deletedFiles: {
-    customerInfo: Set<string>
-    contractDocs: Set<string>
-    registryDocs: Set<string>
-  }
-  setDeletedFiles: React.Dispatch<React.SetStateAction<{
-    customerInfo: Set<string>
-    contractDocs: Set<string>
-    registryDocs: Set<string>
-  }>>
   onNext: (draftJobId: string | null) => void
 }
 
-export default function UploadFiles({
-  jobId,
-  deletedFiles,
-  setDeletedFiles,
-  onNext,
-}: UploadFilesProps) {
+export default function UploadFiles({ onNext }: UploadFilesProps) {
   const router = useRouter()
-  const { user } = useAuth()
   const {
     uploadedFiles,
     setUploadedFiles,
     loadedFileInfo,
     setLoadedFileInfo,
-    fieldMappings,
     jobName,
     setJobName,
-    setJobId,
     canAccessStep,
+    deletedFiles,
+    setDeletedFiles,
+    autoSaveJob,
   } = useUploadContext()
 
   const [dragStates, setDragStates] = useState<{
@@ -79,164 +59,6 @@ export default function UploadFiles({
 
   const isLoadedFile = (category: "customerInfo" | "contractDocs" | "registryDocs", fileName: string) => {
     return loadedFileInfo[category].some((f) => f.name === fileName)
-  }
-
-  const autoSaveJob = async (templateId?: string): Promise<string | null> => {
-    if (!user || !jobName.trim()) {
-      return null
-    }
-
-    try {
-      let templateIdToUse = templateId
-      if (!templateIdToUse) {
-        const templates = await api.getTemplates()
-        if (templates.length > 0) {
-          templateIdToUse = templates[0].id
-        } else {
-          return null
-        }
-      }
-
-      let currentJobId = jobId
-
-      const baseJobData = {
-        userId: user.id,
-        templateId: templateIdToUse,
-        title: jobName,
-        templateJson: fieldMappings,
-        files: [],
-      }
-
-      if (!currentJobId) {
-        const draftJob = await api.createJob(baseJobData)
-        setJobId(draftJob.id)
-        currentJobId = draftJob.id
-      } else {
-        await api.updateJob(currentJobId, {
-          title: jobName,
-          templateJson: fieldMappings,
-        })
-      }
-
-      if (!currentJobId) {
-        return null
-      }
-
-      const files: JobFileInput[] = []
-      const deletedFilesSnapshot = deletedFiles
-      const deletedFileKeys = CATEGORY_KEYS.flatMap((categoryKey) =>
-        Array.from(deletedFilesSnapshot[categoryKey])
-          .map((fileName) =>
-            loadedFileInfo[categoryKey].find((file) => file.name === fileName)?.fileKey,
-          )
-          .filter((fileKey): fileKey is string => Boolean(fileKey)),
-      )
-
-      const pushLoadedFiles = (
-        categoryKey: 'customerInfo' | 'contractDocs' | 'registryDocs',
-        category: JobFileCategory,
-      ) => {
-        loadedFileInfo[categoryKey]
-          .filter(f => !deletedFiles[categoryKey].has(f.name))
-          .forEach(f => {
-            files.push({
-              fileName: f.name,
-              fileKey: f.fileKey,
-              category,
-            })
-          })
-      }
-
-      pushLoadedFiles('customerInfo', 'customer_info')
-      pushLoadedFiles('contractDocs', 'contract_documents')
-      pushLoadedFiles('registryDocs', 'registry_transcript')
-
-      const uploadNewFiles = async (
-        categoryKey: 'customerInfo' | 'contractDocs' | 'registryDocs',
-        category: JobFileCategory,
-      ): Promise<Array<{ name: string; fileKey: string }>> => {
-        const pendingFiles = uploadedFiles[categoryKey]
-        if (pendingFiles.length === 0) {
-          return []
-        }
-
-        const uploadResults = await Promise.all(
-          pendingFiles.map(async (file) => {
-            const fileKey = await uploadToBlob(currentJobId, category, file)
-            return { file, fileKey }
-          }),
-        )
-
-        const draftFiles: Array<{ name: string; fileKey: string }> = uploadResults.map(({ file, fileKey }) => {
-          files.push({
-            fileName: file.name,
-            fileKey,
-            category,
-          })
-          return { name: file.name, fileKey }
-        })
-
-        return draftFiles
-      }
-
-      const newCustomerFiles = await uploadNewFiles('customerInfo', 'customer_info')
-      const newContractFiles = await uploadNewFiles('contractDocs', 'contract_documents')
-      const newRegistryFiles = await uploadNewFiles('registryDocs', 'registry_transcript')
-
-      const appenddraftFiles = (
-        categoryKey: 'customerInfo' | 'contractDocs' | 'registryDocs',
-        draftFiles: Array<{ name: string; fileKey: string }>,
-      ) => {
-        if (draftFiles.length === 0) {
-          return
-        }
-
-        const draftNames = new Set(draftFiles.map((file) => file.name))
-
-        setUploadedFiles((prev) => ({
-          ...prev,
-          [categoryKey]: prev[categoryKey].filter((file) => !draftNames.has(file.name)),
-        }))
-
-        setLoadedFileInfo((prev) => ({
-          ...prev,
-          [categoryKey]: [
-            ...prev[categoryKey],
-            ...draftFiles.map((file) => ({
-              name: file.name,
-              fileKey: file.fileKey,
-            })),
-          ],
-        }))
-      }
-
-      appenddraftFiles('customerInfo', newCustomerFiles)
-      appenddraftFiles('contractDocs', newContractFiles)
-      appenddraftFiles('registryDocs', newRegistryFiles)
-
-      if (currentJobId && deletedFileKeys.length > 0) {
-        await api.deleteJobFiles(currentJobId, deletedFileKeys)
-        setLoadedFileInfo((prev) => ({
-          customerInfo: prev.customerInfo.filter((file) => !deletedFilesSnapshot.customerInfo.has(file.name)),
-          contractDocs: prev.contractDocs.filter((file) => !deletedFilesSnapshot.contractDocs.has(file.name)),
-          registryDocs: prev.registryDocs.filter((file) => !deletedFilesSnapshot.registryDocs.has(file.name)),
-        }))
-        setDeletedFiles({
-          customerInfo: new Set(),
-          contractDocs: new Set(),
-          registryDocs: new Set(),
-        })
-      }
-
-      await api.updateJob(currentJobId, {
-        files,
-      })
-
-      return currentJobId
-    } catch (err) {
-      console.error('Auto-save job failed:', err)
-      return null
-    }
   }
 
   const handleFileSelect = (category: "customerInfo" | "contractDocs" | "registryDocs", files: FileList | null) => {
