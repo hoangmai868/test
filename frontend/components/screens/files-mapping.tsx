@@ -94,6 +94,13 @@ const buildPromptsFromFieldGroups = (fieldGroups: FieldGroup[]): Record<string, 
   return promptEntries
 }
 
+const buildPromptText = (fileNames: string[], prompt: string, note?: string): string => {
+  const fileListText = fileNames.length > 0 ? fileNames.join("、") : "選択されたファイル"
+  const trimmedComment = note?.trim()
+  const commentText = trimmedComment ? trimmedComment : "追加コメントなし"
+  return `「${fileListText}」から、${prompt}、「${commentText}」を考慮すること。`
+}
+
 export default function FilesMapping({
   uploadedFiles,
   loadedFileInfo,
@@ -808,7 +815,13 @@ export default function FilesMapping({
 
           <ScrollArea className="flex-1 w-full overflow-y-auto">
             <div className="overflow-x-auto w-full">
-              <table className="w-full border-collapse">
+              <table className="w-full border-collapse table-fixed">
+                <colgroup>
+                  <col className="w-1/5" />
+                  <col className="w-1/5" />
+                  <col className="w-[30%]" />
+                  <col className="w-[30%]" />
+                </colgroup>
                 <thead>
                   <tr className="border-b">
                     <th className="text-left p-3 font-semibold text-sm bg-slate-50 sticky top-0 z-10 col-group">
@@ -817,10 +830,10 @@ export default function FilesMapping({
                     <th className="text-left p-3 font-semibold text-sm bg-slate-50 sticky top-0 z-10 col-field">
                       訴状の項目
                     </th>
-                    <th className="text-left p-3 font-semibold text-sm bg-slate-50 sticky top-0 z-10 min-w-[300px] col-instruction">
+                    <th className="text-left p-3 font-semibold text-sm bg-slate-50 sticky top-0 z-10 col-instruction">
                       プロンプト
                     </th>
-                    <th className="text-center p-3 font-semibold text-sm bg-slate-50 sticky top-0 z-10 w-[200px] col-checkbox">
+                    <th className="text-center p-3 font-semibold text-sm bg-slate-50 sticky top-0 z-10 col-checkbox">
                       出力結果
                     </th>
                   </tr>
@@ -833,6 +846,7 @@ export default function FilesMapping({
                         const mapping = fieldMappings.find((m) => m.fieldId === field.name)
                         const selectedFiles = mapping?.fileIds || []
                         const noteForField = instructions[field.name] || mapping?.note || ""
+                        const defaultPromptText = buildPromptText(selectedFiles, field['prompt'] || "", noteForField)
                         return (
                           <tr key={`${group.groupName}-${field.name}`} className="border-b hover:bg-slate-50">
                             {isFirstInGroup && (
@@ -848,29 +862,11 @@ export default function FilesMapping({
                               <div className="space-y-3">
                                 <Textarea
                                   placeholder="プロンプトを入力してください"
-                                  value={prompts[field.name] || ""}
+                                  value={defaultPromptText}
                                   onChange={(e) => handlePromptChange(field.name, e.target.value)}
                                   className="min-h-[80px] text-sm"
+                                  disabled
                                 />
-                                <div className="space-y-1 text-xs">
-                                  <p className="font-semibold">選択されたファイル</p>
-                                  {selectedFiles.length > 0 ? (
-                                    selectedFiles.map((fileName) => (
-                                      <div key={fileName} className="flex items-center gap-2 text-xs text-slate-700">
-                                        <Checkbox checked disabled />
-                                        <span className="truncate">{fileName}</span>
-                                      </div>
-                                    ))
-                                  ) : (
-                                    <p className="text-muted-foreground">ファイルが選択されていません</p>
-                                  )}
-                                </div>
-                                <div className="text-xs">
-                                  <p className="font-semibold">追加指示</p>
-                                  <p className="text-muted-foreground">
-                                    {noteForField || "未入力"}
-                                  </p>
-                                </div>
                               </div>
                             </td>
                             <td className={`px-4 py-3 align-top text-center border col-checkbox`}>

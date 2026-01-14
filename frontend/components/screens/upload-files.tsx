@@ -430,89 +430,89 @@ export default function UploadFiles({
             <FileCard title="契約書類等" category="contractDocs" inputRef={contractDocsRef} />
             <FileCard title="登記簿謄本" category="registryDocs" inputRef={registryDocsRef} />
           </div>
-
-          <Card className="h-fit sticky top-6">
-            <CardHeader>
-              <CardTitle>アップロード済みファイル一覧</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ScrollArea className="max-h-[600px] overflow-y-auto">
-        <div className="space-y-6">
-          {CATEGORY_SECTIONS.map(({ key, title }) => {
-            const combinedFiles = getCombinedFiles(key)
-            return (
-              <div key={key}>
-                <h3 className="font-semibold text-sm mb-2 text-slate-700">{title}</h3>
-                {combinedFiles.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">ファイルがありません</p>
-                ) : (
-                  <ul className="space-y-1">
-                    {combinedFiles.map((file, index) => {
-                      const previewable = Boolean(file.fileKey)
+          <div className="flex flex-col gap-y-4">
+            <Card className="h-fit sticky top-6">
+              <CardHeader>
+                <CardTitle>アップロード済みファイル一覧</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ScrollArea className="max-h-[600px] overflow-y-auto">
+                  <div className="space-y-6">
+                    {CATEGORY_SECTIONS.map(({ key, title }) => {
+                      const combinedFiles = getCombinedFiles(key)
                       return (
-                        <li
-                          key={`${file.isLoaded ? 'loaded' : 'new'}-${file.name}`}
-                          className="flex items-center gap-2 text-sm text-slate-600 hover:bg-slate-100 px-2 py-1.5 rounded transition-colors"
-                        >
-                          <span
-                            className={`flex-1 break-words text-left ${
-                              previewable ? 'cursor-pointer text-primary hover:underline' : ''
-                            }`}
-                            role={previewable ? 'button' : undefined}
-                            tabIndex={previewable ? 0 : undefined}
-                            onClick={() => previewable && handleFilePreview(file.fileKey)}
-                            onKeyDown={(event) => {
-                              if (
-                                previewable &&
-                                (event.key === 'Enter' || event.key === ' ')
-                              ) {
-                                event.preventDefault()
-                                handleFilePreview(file.fileKey)
-                              }
-                            }}
-                          >
-                            {index + 1}. {file.name}
-                          </span>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 shrink-0 hover:bg-red-50"
-                            onClick={() => handleUploadedFileDelete(key, file.name)}
-                            title="ファイルを削除"
-                          >
-                            <Trash2 className="h-4 w-4 text-red-500" />
-                          </Button>
-                        </li>
+                        <div key={key}>
+                          <h3 className="font-semibold text-sm mb-2 text-slate-700">{title}</h3>
+                          {combinedFiles.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">ファイルがありません</p>
+                          ) : (
+                            <ul className="space-y-1">
+                              {combinedFiles.map((file, index) => {
+                                const previewable = Boolean(file.fileKey)
+                                return (
+                                  <li
+                                    key={`${file.isLoaded ? 'loaded' : 'new'}-${file.name}`}
+                                    className="flex items-center gap-2 text-sm text-slate-600 hover:bg-slate-100 px-2 py-1.5 rounded transition-colors"
+                                  >
+                                    <span
+                                      className={`flex-1 break-words text-left ${
+                                        previewable ? 'cursor-pointer text-primary hover:underline' : ''
+                                      }`}
+                                      role={previewable ? 'button' : undefined}
+                                      tabIndex={previewable ? 0 : undefined}
+                                      onClick={() => previewable && handleFilePreview(file.fileKey)}
+                                      onKeyDown={(event) => {
+                                        if (
+                                          previewable &&
+                                          (event.key === 'Enter' || event.key === ' ')
+                                        ) {
+                                          event.preventDefault()
+                                          handleFilePreview(file.fileKey)
+                                        }
+                                      }}
+                                    >
+                                      {index + 1}. {file.name}
+                                    </span>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7 shrink-0 hover:bg-red-50"
+                                      onClick={() => handleUploadedFileDelete(key, file.name)}
+                                      title="ファイルを削除"
+                                    >
+                                      <Trash2 className="h-4 w-4 text-red-500" />
+                                    </Button>
+                                  </li>
+                                )
+                              })}
+                            </ul>
+                          )}
+                        </div>
                       )
                     })}
-                  </ul>
-                )}
-              </div>
-            )
-          })}
 
-          <div className="mt-3 pt-3 border-t">
-            <p className="text-xs text-muted-foreground text-center">
-              合計: {getTotalFilesCount()}件
-            </p>
+                    <div className="mt-3 pt-3 border-t">
+                      <p className="text-xs text-muted-foreground text-center">
+                        合計: {getTotalFilesCount()}件
+                      </p>
+                    </div>
+                  </div>
+                </ScrollArea>
+              </CardContent>
+            </Card>
+            <div className="flex justify-end">
+              <Button
+                onClick={async () => {
+                  const draftId = await autoSaveJob()
+                  onNext(draftId)
+                }}
+                disabled={!canAccessStep(2)}
+                className="w-full sm:w-auto"
+              >
+                次の画面へ進む
+              </Button>
+            </div>
           </div>
-        </div>
-              </ScrollArea>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="flex justify-end">
-          <Button
-            onClick={async () => {
-              const draftId = await autoSaveJob()
-              onNext(draftId)
-            }}
-            disabled={!canAccessStep(2)}
-            className="w-full sm:w-auto"
-          >
-            次の画面へ進む
-          </Button>
         </div>
       </div>
     </div>
