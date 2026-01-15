@@ -18,16 +18,16 @@ async function main() {
   const prisma = new PrismaService() // tự khởi tạo ngoài Nest context
 
   const users = [
-    { userName: 'endclient', password: 'password123' },
-    { userName: 'tmi', password: 'password123' },
-    { userName: 'aix', password: 'password123' },
+    { userName: 'endclient', password: 'AwYlNfS2ufhYpWBo' },
+    { userName: 'tmi', password: 'WO1ycLzlVv9R10Ka' },
+    { userName: 'aix', password: 'WostIsBoF9zDEM9U' },
   ]
 
   for (const user of users) {
     try {
       await prisma.user.upsert({
         where: { userName: user.userName },
-        update: {},
+        update: {password: user.password,},
         create: user,
       })
       console.log(`✔ User ${user.userName} seeded`)

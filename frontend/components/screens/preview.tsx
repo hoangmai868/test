@@ -52,7 +52,7 @@ export default function Preview({ jobId }: PreviewProps) {
 
   return (
     <div className="bg-slate-50 p-6">
-      <div className="container mx-auto">
+      <div className="container mx-auto space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-bold">予約実行</h1>
           <Button variant="outline" size="sm" onClick={() => router.push("/")}>

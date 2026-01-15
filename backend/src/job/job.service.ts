@@ -737,7 +737,7 @@ export class JobService {
     }
 
     // Header
-    const headers = ['分類', '訴状の必要な項目', '追加指示', '生成完了'];
+    const headers = ['分類', '訴状の必要な項目', '追加指示', '生成結果'];
     worksheet.addRow(headers);
 
     const headerRow = worksheet.getRow(1);
@@ -783,7 +783,7 @@ export class JobService {
       { width: 20 }, // 分類
       { width: 30 }, // 訴状の必要な項目
       { width: 30 }, // 追加指示
-      { width: 30 }, // 生成完了
+      { width: 30 }, // 生成結果
     ];
 
     const buffer = await workbook.xlsx.writeBuffer();

@@ -55,7 +55,7 @@ export default function Header() {
                   <p className="text-sm font-medium">{user.name}</p>
                 </div>
               </DropdownMenuLabel>
-              <DropdownMenuSeparator />
+              {/* <DropdownMenuSeparator />
               <DropdownMenuItem>
                 <User className="mr-2 h-4 w-4" />
                 プロフィール
@@ -63,7 +63,7 @@ export default function Header() {
               <DropdownMenuItem>
                 <Settings className="mr-2 h-4 w-4" />
                 設定
-              </DropdownMenuItem>
+              </DropdownMenuItem> */}
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleLogout} className="text-red-600">
                 <LogOut className="mr-2 h-4 w-4" />

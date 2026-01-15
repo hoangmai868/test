@@ -160,7 +160,18 @@ export class JobController {
     try {
       const excelBuffer = await this.jobService.generateExcel(id);
       const job = await this.jobService.findOne(id);
-      const fileName = `${job.title || 'job'}_${id}.xlsx`;
+
+      const now = new Date();
+      const dateStr = [
+        now.getFullYear(),
+        String(now.getMonth() + 1).padStart(2, '0'),
+        String(now.getDate()).padStart(2, '0'),
+      ].join('') + '_' + [
+        String(now.getHours()).padStart(2, '0'),
+        String(now.getMinutes()).padStart(2, '0'),
+        String(now.getSeconds()).padStart(2, '0'),
+      ].join('');
+      const fileName = `${job.title || 'job'}_${dateStr}.xlsx`;
       
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);

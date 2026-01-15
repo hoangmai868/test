@@ -44,17 +44,6 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-white p-4">
       <Card className="w-full max-w-md shadow-lg">
         <CardHeader className="space-y-6 pb-6">
-          <div className="flex justify-center">
-            <Image
-              src="/images/aicross-logo.png"
-              alt="AICross"
-              width={180}
-              height={60}
-              className="object-contain"
-              priority
-            />
-          </div>
-
           <div className="text-center space-y-2">
             <h1 className="text-2xl font-semibold text-balance">ようこそ</h1>
             <p className="text-sm text-muted-foreground">アカウントにアクセスするには、認証情報を入力してください</p>

@@ -331,7 +331,7 @@ export default function UploadFiles({ onNext }: UploadFilesProps) {
                 disabled={!canAccessStep(2)}
                 className="w-full sm:w-auto"
               >
-                次の画面へ進む
+                次へ
               </Button>
             </div>
           </div>

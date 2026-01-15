@@ -46,7 +46,7 @@ export default function PromptSettingsPage() {
     // Simulate generation
     setOutputs((prev) => ({ ...prev, [fieldName]: "生成中..." }))
     setTimeout(() => {
-      setOutputs((prev) => ({ ...prev, [fieldName]: "生成完了" }))
+      setOutputs((prev) => ({ ...prev, [fieldName]: "生成結果" }))
     }, 1000)
   }
 

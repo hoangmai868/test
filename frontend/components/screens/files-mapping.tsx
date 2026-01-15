@@ -699,7 +699,7 @@ export default function FilesMapping({
                     保存中...
                   </>
                 ) : (
-                  "一次保存"
+                  "一時保存"
                 )}
               </Button>
 
