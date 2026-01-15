@@ -24,7 +24,7 @@ export function UploadStepper() {
   const router = useRouter()
   const currentStep = searchParams.get("step") || "1"
   const currentStepIndex = steps.findIndex((step) => step.step === currentStep)
-  const { canAccessStep, autoSaveJob, jobId } = useUploadContext()
+  const { canAccessStep, autoSaveJob, jobId, runStepSaveHandler } = useUploadContext()
 
   const buildStepHref = (stepValue: string) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -33,13 +33,24 @@ export function UploadStepper() {
   }
 
   const handleStepClick = async (stepValue: string, event: MouseEvent<HTMLAnchorElement>) => {
-    const shouldAutoSave = (stepValue === "2" || stepValue === "3") && currentStep === "1"
-    if (!shouldAutoSave) {
+    const shouldAutoSaveFromStep1 = (stepValue === "2" || stepValue === "3") && currentStep === "1"
+    const shouldSaveFromStep2To3 = stepValue === "3" && currentStep === "2"
+    if (!shouldAutoSaveFromStep1 && !shouldSaveFromStep2To3) {
       return
     }
 
     event.preventDefault()
-    const draftId = await autoSaveJob()
+    let draftId: string | null = null
+    try {
+      if (shouldAutoSaveFromStep1) {
+        draftId = await autoSaveJob()
+      } else if (shouldSaveFromStep2To3) {
+        draftId = await runStepSaveHandler(2)
+      }
+    } catch (error) {
+      console.error("Auto-save failed:", error)
+    }
+
     const params = new URLSearchParams(searchParams.toString())
     params.set("step", stepValue)
     const nextJobId = draftId ?? jobId ?? searchParams.get("jobId")

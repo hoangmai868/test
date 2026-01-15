@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { createContext, useContext, useState, useCallback, type ReactNode } from "react"
+import { createContext, useContext, useState, useCallback, useRef, type ReactNode } from "react"
 import { useAuth } from "@/contexts/auth-context"
 import { api } from "@/lib/api"
 import { JobFileCategory, JobFileInput } from "@/types/shared/job-file"
@@ -70,6 +70,13 @@ interface UploadContextType {
     }>
   >
   autoSaveJob: (templateId?: string) => Promise<string | null>
+  jobTemplateId: string | null
+  setJobTemplateId: React.Dispatch<React.SetStateAction<string | null>>
+  registerStepSaveHandler: (
+    step: number,
+    handler: () => Promise<string | null>,
+  ) => () => void
+  runStepSaveHandler: (step: number) => Promise<string | null>
 }
 
 const UploadContext = createContext<UploadContextType | undefined>(undefined)
@@ -102,6 +109,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
   const [fieldMappings, setFieldMappings] = useState<FieldMapping[]>([])
   const [jobName, setJobName] = useState<string>("")
   const [jobId, setJobId] = useState<string | null>(null)
+  const [jobTemplateId, setJobTemplateId] = useState<string | null>(null)
   const [isLoadingJob, setIsLoadingJob] = useState(false)
   const { user } = useAuth()
   const [deletedFiles, setDeletedFiles] = useState<Record<UploadCategoryKey, Set<string>>>({
@@ -109,6 +117,29 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     contractDocs: new Set(),
     registryDocs: new Set(),
   })
+  const stepSaveHandlersRef = useRef<Map<number, () => Promise<string | null>>>(new Map())
+
+  const registerStepSaveHandler = useCallback(
+    (step: number, handler: () => Promise<string | null>) => {
+      stepSaveHandlersRef.current.set(step, handler)
+      return () => {
+        const currentHandler = stepSaveHandlersRef.current.get(step)
+        if (currentHandler === handler) {
+          stepSaveHandlersRef.current.delete(step)
+        }
+      }
+    },
+    [],
+  )
+
+  const runStepSaveHandler = useCallback(async (step: number): Promise<string | null> => {
+    const handler = stepSaveHandlersRef.current.get(step)
+    if (!handler) {
+      return null
+    }
+
+    return handler()
+  }, [])
 
   const resetContext = useCallback(() => {
     setUploadedFiles({
@@ -129,6 +160,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       contractDocs: new Set(),
       registryDocs: new Set(),
     })
+    setJobTemplateId(null)
   }, [])
 
   const loadJobData = useCallback(async (loadJobId: string) => {
@@ -144,6 +176,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       // Set job ID and name
       setJobId(jobData.id)
       setJobName(jobData.title || "")
+      setJobTemplateId(jobData.templateId ?? null)
       
       // Parse files by category
       const customerInfoFiles: FileInfo[] = []
@@ -445,6 +478,10 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       deletedFiles,
       setDeletedFiles,
       autoSaveJob,
+      jobTemplateId,
+      setJobTemplateId,
+      registerStepSaveHandler,
+      runStepSaveHandler,
     }}>
       {children}
     </UploadContext.Provider>

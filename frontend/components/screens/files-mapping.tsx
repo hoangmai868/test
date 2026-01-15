@@ -5,7 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Settings, ChevronLeft, ChevronRight, Loader2, Home } from "lucide-react"
 import type React from "react"
 
-import { useState, Fragment, useEffect, useMemo } from "react"
+import { useState, Fragment, useEffect, useMemo, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -50,8 +50,10 @@ interface FilesMappingProps {
     registryDocs: File[]
   }
   loadedFileInfo?: FileInfoByCategory
-  fieldMappings: Array<{ fieldId: string; fileIds: string[]; note: string, extractedValue: string }>
-  setFieldMappings: React.Dispatch<React.SetStateAction<Array<{ fieldId: string; fileIds: string[]; note: string, extractedValue: string }>>>
+  fieldMappings: Array<{ fieldId: string; fileIds: string[]; note: string; extractedValue: string }>
+  setFieldMappings: React.Dispatch<
+    React.SetStateAction<Array<{ fieldId: string; fileIds: string[]; note: string; extractedValue: string }>>
+  >
   onBack: () => void
   onNext: () => void
   canProceed: boolean
@@ -94,13 +96,6 @@ const buildPromptsFromFieldGroups = (fieldGroups: FieldGroup[]): Record<string, 
   return promptEntries
 }
 
-const buildPromptText = (fileNames: string[], prompt: string, note?: string): string => {
-  const fileListText = fileNames.length > 0 ? fileNames.join("、") : "選択されたファイル"
-  const trimmedComment = note?.trim()
-  const commentText = trimmedComment ? trimmedComment : "追加コメントなし"
-  return `「${fileListText}」から、${prompt}、「${commentText}」を考慮すること。`
-}
-
 export default function FilesMapping({
   uploadedFiles,
   loadedFileInfo,
@@ -112,7 +107,15 @@ export default function FilesMapping({
 }: FilesMappingProps) {
   const router = useRouter()
   const { user } = useAuth()
-  const { jobName, setJobName, jobId, setJobId } = useUploadContext()
+  const {
+    jobName,
+    setJobName,
+    jobId,
+    setJobId,
+    jobTemplateId,
+    setJobTemplateId,
+    registerStepSaveHandler,
+  } = useUploadContext()
   const [selectedTemplate, setSelectedTemplate] = useState("typeA")
   const [isPromptModalOpen, setIsPromptModalOpen] = useState(false)
   const [prompts, setPrompts] = useState<Record<string, string>>({})
@@ -140,14 +143,6 @@ export default function FilesMapping({
         })
 
         setTemplateFieldGroups(templateMap)
-
-        // Set default template if available
-        if (fetchedTemplates.length > 0) {
-          const firstTemplate = fetchedTemplates[0]
-          const firstIdentifier = mapTemplateToIdentifier(firstTemplate.fileName)
-          setSelectedTemplate(firstIdentifier)
-          setPrompts(buildPromptsFromFieldGroups(templateMap[firstIdentifier] || []))
-        }
       } catch (error) {
         console.error("Failed to fetch templates:", error)
         // Fallback to empty state or show error
@@ -158,6 +153,21 @@ export default function FilesMapping({
 
     fetchTemplates()
   }, [])
+
+  useEffect(() => {
+    if (templates.length === 0) {
+      return
+    }
+
+    const templateFromJob = jobTemplateId
+      ? templates.find((template) => template.id === jobTemplateId)
+      : undefined
+    const templateToUse = templateFromJob || templates[0]
+
+    const identifier = mapTemplateToIdentifier(templateToUse.fileName)
+    setSelectedTemplate(identifier)
+    setPrompts(buildPromptsFromFieldGroups(templateFieldGroups[identifier] || []))
+  }, [jobTemplateId, templateFieldGroups, templates])
 
   const currentFieldGroups: FieldGroup[] = templateFieldGroups[selectedTemplate] || []
 
@@ -208,6 +218,10 @@ export default function FilesMapping({
     setInstructions({})
     setFieldMappings([])
     setPrompts(buildPromptsFromFieldGroups(templateFieldGroups[newTemplate] || []))
+    const selectedTemplateDetail = templates.find(
+      (template) => mapTemplateToIdentifier(template.fileName) === newTemplate,
+    )
+    setJobTemplateId(selectedTemplateDetail?.id ?? null)
   }
 
   const handleCheckboxChange = (fieldName: string, fileName: string, checked: boolean) => {
@@ -340,7 +354,22 @@ export default function FilesMapping({
     setIsPromptModalOpen(false)
   }
 
-  const handleSaveJob = async (showAlert = true) => {
+  const handleOpenPromptModal = async () => {
+    if (!user || !jobName.trim()) {
+      alert("ジョブ名を入力してください")
+      return
+    }
+    try {
+      await handleSaveJob(false)
+    } catch (error) {
+      console.error("Auto-save before opening prompt modal failed:", error)
+    } finally {
+      setIsPromptModalOpen(true)
+    }
+  }
+
+  const handleSaveJob = useCallback(
+    async (showAlert = true) => {
     if (!user || !jobName.trim()) {
       if (showAlert) {
         alert("ジョブ名を入力してください")
@@ -565,7 +594,38 @@ export default function FilesMapping({
     } finally {
       setIsSaving(false)
     }
-  }
+  },
+  [
+    user,
+    jobName,
+    templates,
+    selectedTemplate,
+    uploadedFiles,
+    loadedFileInfo,
+    currentFieldGroups,
+    fieldMappings,
+    prompts,
+    jobId,
+    setFieldMappings,
+    setMappings,
+    setInstructions,
+    setPrompts,
+    setJobName,
+    setJobId,
+    setIsSaving,
+  ],
+)
+
+  useEffect(() => {
+    const unregister = registerStepSaveHandler(2, async () => {
+      const savedJob = await handleSaveJob(false)
+      return savedJob?.id ?? jobId
+    })
+
+    return () => {
+      unregister()
+    }
+  }, [handleSaveJob, jobId, registerStepSaveHandler])
 
   // Combine loaded files (from API) with newly uploaded files
   const getCombinedFileNames = (category: "customerInfo" | "contractDocs" | "registryDocs") => {
@@ -703,7 +763,7 @@ export default function FilesMapping({
                 )}
               </Button>
 
-              <Button variant="outline" size="icon" onClick={() => setIsPromptModalOpen(true)}>
+              <Button variant="outline" size="icon" onClick={handleOpenPromptModal}>
                 <Settings className="h-4 w-4" />
               </Button>
             </div>
@@ -846,7 +906,7 @@ export default function FilesMapping({
                         const mapping = fieldMappings.find((m) => m.fieldId === field.name)
                         const selectedFiles = mapping?.fileIds || []
                         const noteForField = instructions[field.name] || mapping?.note || ""
-                        const defaultPromptText = buildPromptText(selectedFiles, field['prompt'] || "", noteForField)
+                        const promptText = prompts[field.name] || ""
                         return (
                           <tr key={`${group.groupName}-${field.name}`} className="border-b hover:bg-slate-50">
                             {isFirstInGroup && (
@@ -862,11 +922,20 @@ export default function FilesMapping({
                               <div className="space-y-3">
                                 <Textarea
                                   placeholder="プロンプトを入力してください"
-                                  value={defaultPromptText}
+                                  value={promptText}
                                   onChange={(e) => handlePromptChange(field.name, e.target.value)}
                                   className="min-h-[80px] text-sm"
-                                  disabled
                                 />
+                                <div className="text-xs leading-tight text-slate-600 space-y-1">
+                                  <div>
+                                    <span className="font-semibold text-slate-800">登録ファイル：</span>
+                                    {selectedFiles.length > 0 ? selectedFiles.map(truncateFileName).join("、") : "未選択"}
+                                  </div>
+                                  <div>
+                                    <span className="font-semibold text-slate-800">追加コメント：</span>
+                                    {noteForField.trim() ? noteForField : "なし"}
+                                  </div>
+                                </div>
                               </div>
                             </td>
                             <td className={`px-4 py-3 align-top text-center border col-checkbox`}>
