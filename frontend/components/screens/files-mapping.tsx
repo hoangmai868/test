@@ -1,7 +1,6 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Settings, ChevronLeft, ChevronRight, Loader2, Home } from "lucide-react"
 import type React from "react"
 
@@ -10,8 +9,9 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
+import ConfirmReturnTopModal from "@/components/modals/confirm-return-top-modal"
+import PromptSettingsModal from "@/components/modals/prompt-settings-modal"
 import type { JSX } from "react/jsx-runtime"
 import { api, type Template } from "@/lib/api"
 import { useAuth } from "@/contexts/auth-context"
@@ -115,16 +115,32 @@ export default function FilesMapping({
     jobTemplateId,
     setJobTemplateId,
     registerStepSaveHandler,
+    promptEntries,
+    setPromptEntries,
+    editedPrompts,
+    setEditedPrompts,
   } = useUploadContext()
   const [selectedTemplate, setSelectedTemplate] = useState("typeA")
   const [isPromptModalOpen, setIsPromptModalOpen] = useState(false)
-  const [prompts, setPrompts] = useState<Record<string, string>>({})
   const [outputs, setOutputs] = useState<Record<string, string>>({})
   const [generatingStates, setGeneratingStates] = useState<Record<string, boolean>>({})
   const [templateFieldGroups, setTemplateFieldGroups] = useState<Record<string, FieldGroup[]>>({})
+  const templatePrompts = useMemo(
+    () => buildPromptsFromFieldGroups(templateFieldGroups[selectedTemplate] || []),
+    [templateFieldGroups, selectedTemplate],
+  )
+  const effectivePrompts = useMemo(
+    () => ({
+      ...templatePrompts,
+      ...promptEntries,
+      ...editedPrompts,
+    }),
+    [templatePrompts, promptEntries, editedPrompts],
+  )
   const [templates, setTemplates] = useState<Template[]>([])
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  const [isConfirmReturnOpen, setIsConfirmReturnOpen] = useState(false)
 
   // Fetch templates on mount
   useEffect(() => {
@@ -166,10 +182,11 @@ export default function FilesMapping({
 
     const identifier = mapTemplateToIdentifier(templateToUse.fileName)
     setSelectedTemplate(identifier)
-    setPrompts(buildPromptsFromFieldGroups(templateFieldGroups[identifier] || []))
   }, [jobTemplateId, templateFieldGroups, templates])
 
   const currentFieldGroups: FieldGroup[] = templateFieldGroups[selectedTemplate] || []
+  const selectedTemplateDisplayName =
+    templates.find((template) => mapTemplateToIdentifier(template.fileName) === selectedTemplate)?.displayName ?? "テンプレート"
 
   const [mappings, setMappings] = useState<Record<string, Record<string, boolean>>>(() => {
     const initialMappings: Record<string, Record<string, boolean>> = {}
@@ -217,7 +234,8 @@ export default function FilesMapping({
     setMappings({})
     setInstructions({})
     setFieldMappings([])
-    setPrompts(buildPromptsFromFieldGroups(templateFieldGroups[newTemplate] || []))
+    setPromptEntries({})
+    setEditedPrompts({})
     const selectedTemplateDetail = templates.find(
       (template) => mapTemplateToIdentifier(template.fileName) === newTemplate,
     )
@@ -269,7 +287,7 @@ export default function FilesMapping({
   }
 
   const handlePromptChange = (fieldName: string, value: string) => {
-    setPrompts((prev) => ({ ...prev, [fieldName]: value }))
+    setEditedPrompts((prev) => ({ ...prev, [fieldName]: value }))
   }
 
   const handleGenerate = async (fieldName: string) => {
@@ -285,7 +303,7 @@ export default function FilesMapping({
       return
     }
 
-    const promptValue = prompts[fieldName] || ""
+    const promptValue = effectivePrompts[fieldName] || ""
     const mapping = fieldMappings.find((mapping) => mapping.fieldId === fieldName)
     const noteValue = instructions[fieldName] || mapping?.note
 
@@ -359,13 +377,18 @@ export default function FilesMapping({
       alert("ジョブ名を入力してください")
       return
     }
-    try {
-      await handleSaveJob(false)
-    } catch (error) {
-      console.error("Auto-save before opening prompt modal failed:", error)
-    } finally {
+    // try {
+    //   // await handleSaveJob(false)
+    // } catch (error) {
+    //   console.error("Auto-save before opening prompt modal failed:", error)
+    // } finally {
       setIsPromptModalOpen(true)
-    }
+    // }
+  }
+
+  const handleConfirmNavigateHome = () => {
+    setIsConfirmReturnOpen(false)
+    router.push("/")
   }
 
   const handleSaveJob = useCallback(
@@ -442,42 +465,38 @@ export default function FilesMapping({
       )
 
       // Build template_json from fieldMappings in grouped format
-      const templateJson: TemplateJsonGroup[] = currentFieldGroups
-        .map((group) => {
-          const groupFields: TemplateJsonField[] = group.fields
-            .map((field) => {
-              const mapping = fieldMappings.find((m) => m.fieldId === field.name)
-              if (!mapping) return null
+      const templateJson: TemplateJsonGroup[] = currentFieldGroups.map((group) => {
+        const groupFields: TemplateJsonField[] = group.fields.map((field) => {
+          const mapping = fieldMappings.find((m) => m.fieldId === field.name)
 
-              // Extract fileNames and fileKeys from fileIds
-              const fileNames: string[] = []
-              const fileKeys: string[] = []
+          // Extract fileNames and fileKeys from fileIds
+          const fileNames: string[] = []
+          const fileKeys: string[] = []
 
-              mapping.fileIds.forEach((fileId) => {
-                fileNames.push(fileId)
-                const fileKey = fileKeyMap[fileId]
-                if (fileKey) {
-                  fileKeys.push(fileKey)
-                }
-              })
+          mapping?.fileIds.forEach((fileId) => {
+            fileNames.push(fileId)
+            const fileKey = fileKeyMap[fileId]
+            if (fileKey) {
+              fileKeys.push(fileKey)
+            }
+          })
 
-              return {
-                name: field.name,
-                fileNames,
-                fileKeys,
-                note: mapping.note || "",
-                extractedValue: mapping.extractedValue || "",
-                prompt: prompts[field.name] || "",
-              }
-            })
-            .filter((field): field is TemplateJsonField => field !== null)
-
+          const promptValue = effectivePrompts[field.name] || ""
           return {
-            groupName: group.groupName,
-            fields: groupFields,
+            name: field.name,
+            fileNames,
+            fileKeys,
+            note: mapping?.note || "",
+            extractedValue: mapping?.extractedValue || "",
+            prompt: promptValue,
           }
         })
-        .filter((group) => group.fields.length > 0)
+
+        return {
+          groupName: group.groupName,
+          fields: groupFields,
+        }
+      })
 
       const jobData = {
         userId: user.id,
@@ -519,7 +538,7 @@ export default function FilesMapping({
             extractedValue: string
             prompt?: string
           }> = []
-          const promptEntries: Record<string, string> = {}
+          const fetchedPromptEntries: Record<string, string> = {}
           
           if (isGroupedFormat) {
             // Transform from grouped format to flat format
@@ -533,7 +552,9 @@ export default function FilesMapping({
                     extractedValue: field.extractedValue || "",
                     prompt: field.prompt || "",
                   })
-                  promptEntries[field.name] = field.prompt || ""
+                  if (field.name) {
+                    fetchedPromptEntries[field.name] = field.prompt || ""
+                  }
                 })
               },
             )
@@ -542,7 +563,7 @@ export default function FilesMapping({
             flatMappings = fetchedJob.templateJson.map((mapping: any) => {
               const promptValue = mapping.prompt || ""
               if (mapping.fieldId) {
-                promptEntries[mapping.fieldId] = promptValue
+                fetchedPromptEntries[mapping.fieldId] = promptValue
               }
               return {
                 fieldId: mapping.fieldId || "",
@@ -555,7 +576,8 @@ export default function FilesMapping({
           }
           
           setFieldMappings(flatMappings)
-          setPrompts(promptEntries)
+          setPromptEntries(fetchedPromptEntries)
+          setEditedPrompts({})
           
           // Update mappings state
           const newMappings: Record<string, Record<string, boolean>> = {}
@@ -604,12 +626,13 @@ export default function FilesMapping({
     loadedFileInfo,
     currentFieldGroups,
     fieldMappings,
-    prompts,
+    effectivePrompts,
     jobId,
     setFieldMappings,
     setMappings,
     setInstructions,
-    setPrompts,
+    setPromptEntries,
+    setEditedPrompts,
     setJobName,
     setJobId,
     setIsSaving,
@@ -722,7 +745,7 @@ export default function FilesMapping({
           <div className="flex items-center justify-between">
             <CardTitle>登録ファイルと項目の紐づけ</CardTitle>
             <div className="flex items-center gap-4">
-              <Button variant="outline" size="sm" onClick={() => router.push("/")}>
+              <Button variant="outline" size="sm" onClick={() => setIsConfirmReturnOpen(true)}>
                 <Home className="mr-2 h-4 w-4" />
                 TOPへ戻る
               </Button>
@@ -861,124 +884,26 @@ export default function FilesMapping({
         </CardContent>
       </Card>
 
-      <Dialog open={isPromptModalOpen} onOpenChange={setIsPromptModalOpen}>
-        <DialogContent className="!w-[90vw] !max-w-none max-h-[90vh] flex flex-col">
-          <DialogHeader>
-            <div className="flex items-center justify-between pr-10">
-              <DialogTitle>プロンプト設定</DialogTitle>
-              <p className="text-sm text-muted-foreground">
-                選択中:{" "}
-                {templates.find((t) => mapTemplateToIdentifier(t.fileName) === selectedTemplate)?.displayName || "テンプレート"}
-              </p>
-            </div>
-          </DialogHeader>
-
-          <ScrollArea className="flex-1 w-full overflow-y-auto">
-            <div className="overflow-x-auto w-full">
-              <table className="w-full border-collapse table-fixed">
-                <colgroup>
-                  <col className="w-1/5" />
-                  <col className="w-1/5" />
-                  <col className="w-[30%]" />
-                  <col className="w-[30%]" />
-                </colgroup>
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left p-3 font-semibold text-sm bg-slate-50 sticky top-0 z-10 col-group">
-                      分類
-                    </th>
-                    <th className="text-left p-3 font-semibold text-sm bg-slate-50 sticky top-0 z-10 col-field">
-                      訴状の項目
-                    </th>
-                    <th className="text-left p-3 font-semibold text-sm bg-slate-50 sticky top-0 z-10 col-instruction">
-                      プロンプト
-                    </th>
-                    <th className="text-center p-3 font-semibold text-sm bg-slate-50 sticky top-0 z-10 col-checkbox">
-                      出力結果
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {currentFieldGroups.map((group, groupIndex) => (
-                    <Fragment key={`${group.groupName}-${groupIndex}`}>
-                      {group.fields.map((field, fieldIndex) => {
-                        const isFirstInGroup = fieldIndex === 0
-                        const mapping = fieldMappings.find((m) => m.fieldId === field.name)
-                        const selectedFiles = mapping?.fileIds || []
-                        const noteForField = instructions[field.name] || mapping?.note || ""
-                        const promptText = prompts[field.name] || ""
-                        return (
-                          <tr key={`${group.groupName}-${field.name}`} className="border-b hover:bg-slate-50">
-                            {isFirstInGroup && (
-                              <td
-                                rowSpan={group.fields.length}
-                                className="px-4 py-3 align-top font-semibold text-sm border-r col-group"
-                              >
-                                {group.groupName}
-                              </td>
-                            )}
-                            <td className="px-4 py-3 align-top font-medium text-sm border-r col-field">{field.name}</td>
-                            <td className="px-4 py-3 align-top border-r col-instruction">
-                              <div className="space-y-3">
-                                <Textarea
-                                  placeholder="プロンプトを入力してください"
-                                  value={promptText}
-                                  onChange={(e) => handlePromptChange(field.name, e.target.value)}
-                                  className="min-h-[80px] text-sm"
-                                />
-                                <div className="text-xs leading-tight text-slate-600 space-y-1">
-                                  <div>
-                                    <span className="font-semibold text-slate-800">登録ファイル：</span>
-                                    {selectedFiles.length > 0 ? selectedFiles.map(truncateFileName).join("、") : "未選択"}
-                                  </div>
-                                  <div>
-                                    <span className="font-semibold text-slate-800">追加コメント：</span>
-                                    {noteForField.trim() ? noteForField : "なし"}
-                                  </div>
-                                </div>
-                              </div>
-                            </td>
-                            <td className={`px-4 py-3 align-top text-center border col-checkbox`}>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleGenerate(field.name)}
-                                disabled={generatingStates[field.name]}
-                                className="mb-2"
-                              >
-                                {generatingStates[field.name] ? (
-                                  <>
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    生成中...
-                                  </>
-                                ) : (
-                                  "生成"
-                                )}
-                              </Button>
-                              {outputs[field.name] && (
-                                <p className="text-xs text-slate-600 mt-2">{outputs[field.name]}</p>
-                              )}
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </Fragment>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </ScrollArea>
-
-          <div className="flex items-center justify-end gap-2 pt-4 border-t">
-            <Button onClick={handleSave} variant="outline">
-              保存
-            </Button>
-            <Button onClick={handlePromptRegister} className="bg-yellow-500 hover:bg-yellow-600 text-white">
-              プロンプト登録
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <PromptSettingsModal
+        open={isPromptModalOpen}
+        onOpenChange={setIsPromptModalOpen}
+        selectedTemplateDisplayName={selectedTemplateDisplayName}
+        currentFieldGroups={currentFieldGroups}
+        fieldMappings={fieldMappings}
+        instructions={instructions}
+        prompts={effectivePrompts}
+        outputs={outputs}
+        generatingStates={generatingStates}
+        handlePromptChange={handlePromptChange}
+        handleGenerate={handleGenerate}
+        handleSave={handleSave}
+        handlePromptRegister={handlePromptRegister}
+      />
+      <ConfirmReturnTopModal
+        open={isConfirmReturnOpen}
+        onOpenChange={setIsConfirmReturnOpen}
+        onConfirm={handleConfirmNavigateHome}
+      />
     </div>
   )
 }

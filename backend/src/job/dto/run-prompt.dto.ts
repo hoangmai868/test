@@ -6,8 +6,8 @@ export class RunPromptDto {
   fieldName: string;
 
   @IsString()
-  @IsOptional()
-  prompt?: string;
+  @IsNotEmpty()
+  prompt: string;
 
   @IsString()
   @IsOptional()
@@ -15,7 +15,7 @@ export class RunPromptDto {
 
   @IsArray()
   @IsString({ each: true })
-  @IsOptional()
-  fileKeys?: string[];
+  @IsNotEmpty()
+  fileKeys: string[];
 }
 

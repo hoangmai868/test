@@ -77,6 +77,10 @@ interface UploadContextType {
     handler: () => Promise<string | null>,
   ) => () => void
   runStepSaveHandler: (step: number) => Promise<string | null>
+  promptEntries: Record<string, string>
+  setPromptEntries: React.Dispatch<React.SetStateAction<Record<string, string>>>
+  editedPrompts: Record<string, string>
+  setEditedPrompts: React.Dispatch<React.SetStateAction<Record<string, string>>>
 }
 
 const UploadContext = createContext<UploadContextType | undefined>(undefined)
@@ -111,6 +115,8 @@ export function UploadProvider({ children }: { children: ReactNode }) {
   const [jobId, setJobId] = useState<string | null>(null)
   const [jobTemplateId, setJobTemplateId] = useState<string | null>(null)
   const [isLoadingJob, setIsLoadingJob] = useState(false)
+  const [promptEntries, setPromptEntries] = useState<Record<string, string>>({})
+  const [editedPrompts, setEditedPrompts] = useState<Record<string, string>>({})
   const { user } = useAuth()
   const [deletedFiles, setDeletedFiles] = useState<Record<UploadCategoryKey, Set<string>>>({
     customerInfo: new Set(),
@@ -161,6 +167,8 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       registryDocs: new Set(),
     })
     setJobTemplateId(null)
+    setPromptEntries({})
+    setEditedPrompts({})
   }, [])
 
   const loadJobData = useCallback(async (loadJobId: string) => {
@@ -224,10 +232,11 @@ export function UploadProvider({ children }: { children: ReactNode }) {
           jobData.templateJson[0]?.groupName !== undefined
         
         let mappings: FieldMapping[] = []
+        const promptValues: Record<string, string> = {}
         
         if (isGroupedFormat) {
           // Transform from grouped format to flat format
-          jobData.templateJson.forEach((group: { groupName: string; fields: Array<{ name: string; fileNames: string[]; fileKeys?: string[]; note: string; extractedValue: string }> }) => {
+          jobData.templateJson.forEach((group: { groupName: string; fields: Array<{ name: string; fileNames: string[]; fileKeys?: string[]; note: string; extractedValue: string; prompt?: string }> }) => {
             group.fields.forEach((field) => {
               mappings.push({
                 fieldId: field.name,
@@ -235,6 +244,9 @@ export function UploadProvider({ children }: { children: ReactNode }) {
                 note: field.note || "",
                 extractedValue: field.extractedValue || "",
               })
+              if (field.name) {
+                promptValues[field.name] = field.prompt || ""
+              }
             })
           })
         } else {
@@ -245,9 +257,16 @@ export function UploadProvider({ children }: { children: ReactNode }) {
             note: mapping.note || "",
             extractedValue: mapping.extractedValue || "",
           }))
+          jobData.templateJson.forEach((mapping: any) => {
+            if (mapping.fieldId) {
+              promptValues[mapping.fieldId] = mapping.prompt || ""
+            }
+          })
         }
         
         setFieldMappings(mappings)
+        setPromptEntries(promptValues)
+        setEditedPrompts({})
       }
     } catch (error) {
       console.error("Failed to load job data:", error)
@@ -482,6 +501,10 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       setJobTemplateId,
       registerStepSaveHandler,
       runStepSaveHandler,
+      promptEntries,
+      setPromptEntries,
+      editedPrompts,
+      setEditedPrompts,
     }}>
       {children}
     </UploadContext.Provider>

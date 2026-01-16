@@ -11,10 +11,10 @@ import OpenAI from 'openai';
 import { PDFParse } from 'pdf-parse';
 interface TemplateJsonField {
   name: string;
-  fileNames?: string[];
-  fileKeys?: string[];
+  fileNames: string[];
+  fileKeys: string[];
   note?: string;
-  prompt?: string;
+  prompt: string;
   extractedValue?: string;
 }
 
@@ -243,8 +243,9 @@ export class JobService {
 
   async runPrompt(jobId: string, runPromptDto: RunPromptDto): Promise<PromptResult> {
     const job = await this.findOne(jobId);
-    const field = this.findTemplateField(job.templateJson, runPromptDto.fieldName);
-    if (!field) {
+    console.log(`Fetched job ${runPromptDto} for prompt run`);
+    const files = runPromptDto.fileKeys;
+    if (!files) {
       throw new NotFoundException(`フィールド ${runPromptDto.fieldName} が見つかりません`);
     }
 
@@ -253,28 +254,22 @@ export class JobService {
       (runPromptDto.fileKeys || [])
         .map((key) => key.replace(/^\//, ''))
         .filter(Boolean);
-    const fileKeys =
-      providedFileKeys.length > 0
-        ? Array.from(new Set(providedFileKeys))
-        : this.collectFileKeys(field, job.files);
 
-    if (fileKeys.length === 0) {
-      return {
-        fieldName: runPromptDto.fieldName,
-        prompt: (runPromptDto.prompt?.trim() || field.prompt?.trim() || '').trim(),
-        note: (runPromptDto.note?.trim() || field.note?.trim() || '').trim(),
-        files: [],
-        result: "",
-      };
-    }
+    // return {
+    //   fieldName: runPromptDto.fieldName,
+    //   prompt: runPromptDto.prompt?.trim(),
+    //   note: (runPromptDto.note?.trim() || '').trim(),
+    //   files: providedFileKeys,
+    //   result: "",
+    // };
 
-    const documents = await this.extractDocuments(fileKeys, job.files);
-    const promptText = (runPromptDto.prompt?.trim() || field.prompt?.trim() || '').trim();
+    const documents = await this.extractDocuments(providedFileKeys, job.files);
+    const promptText = runPromptDto.prompt.trim();
     if (!promptText) {
       throw new BadRequestException('プロンプトを入力してください');
     }
 
-    const note = (runPromptDto.note?.trim() || field.note?.trim() || '').trim();
+    const note = (runPromptDto.note?.trim() || '').trim();
     const systemPrompt =
       job.template?.systemPrompt || 'You are a helpful legal assistant that summarizes PDF content accurately.';
 
@@ -379,35 +374,6 @@ export class JobService {
       });
       throw error;
     }
-  }
-
-  private findTemplateField(templateJson: unknown, fieldName: string): TemplateJsonField | undefined {
-    if (!Array.isArray(templateJson)) {
-      return undefined;
-    }
-
-    for (const entry of templateJson) {
-      if (isTemplateGroup(entry)) {
-        const match = entry.fields.find((field) => field.name === fieldName);
-        if (match) {
-          return match;
-        }
-      } else if (entry && typeof entry === 'object') {
-        const objectEntry = entry as Record<string, unknown>;
-        const entryName = (objectEntry.fieldId as string) || (objectEntry.name as string);
-        if (entryName === fieldName) {
-          return {
-            name: entryName,
-            fileNames: (objectEntry.fileNames as string[]) || (objectEntry.fileIds as string[]),
-            fileKeys: objectEntry.fileKeys as string[],
-            note: objectEntry.note as string,
-            prompt: objectEntry.prompt as string,
-          };
-        }
-      }
-    }
-
-    return undefined;
   }
 
   private normalizeTemplateJson(templateJson: unknown): TemplateJsonGroup[] {

@@ -1,0 +1,180 @@
+"use client"
+
+import { Fragment } from "react"
+import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Loader2 } from "lucide-react"
+import { Textarea } from "@/components/ui/textarea"
+
+interface PromptField {
+  name: string
+  prompt?: string
+  isParent?: boolean
+}
+
+interface PromptFieldGroup {
+  groupName: string
+  fields: PromptField[]
+}
+
+interface FieldMapping {
+  fieldId: string
+  fileIds: string[]
+  note: string
+  extractedValue: string
+}
+
+interface PromptSettingsModalProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  selectedTemplateDisplayName: string
+  currentFieldGroups: PromptFieldGroup[]
+  fieldMappings: FieldMapping[]
+  instructions: Record<string, string>
+  prompts: Record<string, string>
+  outputs: Record<string, string>
+  generatingStates: Record<string, boolean>
+  handlePromptChange: (fieldName: string, value: string) => void
+  handleGenerate: (fieldName: string) => Promise<void>
+  handleSave: () => void
+  handlePromptRegister: () => void
+}
+
+export default function PromptSettingsModal({
+  open,
+  onOpenChange,
+  selectedTemplateDisplayName,
+  currentFieldGroups,
+  fieldMappings,
+  instructions,
+  prompts,
+  outputs,
+  generatingStates,
+  handlePromptChange,
+  handleGenerate,
+  handleSave,
+  handlePromptRegister,
+}: PromptSettingsModalProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="!w-[90vw] !max-w-none max-h-[90vh] flex flex-col">
+        <DialogHeader>
+          <div className="flex items-center justify-between pr-10">
+            <DialogTitle>プロンプト設定</DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              選択中: {selectedTemplateDisplayName || "テンプレート"}
+            </p>
+          </div>
+        </DialogHeader>
+
+        <ScrollArea className="flex-1 w-full overflow-y-auto">
+          <div className="overflow-x-auto w-full">
+            <table className="w-full border-collapse table-fixed">
+              <colgroup>
+                <col className="w-1/5" />
+                <col className="w-1/5" />
+                <col className="w-[30%]" />
+                <col className="w-[30%]" />
+              </colgroup>
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left p-3 font-semibold text-sm bg-slate-50 sticky top-0 z-10 col-group">
+                    分類
+                  </th>
+                  <th className="text-left p-3 font-semibold text-sm bg-slate-50 sticky top-0 z-10 col-field">
+                    訴状の項目
+                  </th>
+                  <th className="text-left p-3 font-semibold text-sm bg-slate-50 sticky top-0 z-10 col-instruction">
+                    プロンプト
+                  </th>
+                  <th className="text-center p-3 font-semibold text-sm bg-slate-50 sticky top-0 z-10 col-checkbox">
+                    出力結果
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {currentFieldGroups.map((group, groupIndex) => (
+                  <Fragment key={`${group.groupName}-${groupIndex}`}>
+                    {group.fields.map((field, fieldIndex) => {
+                      const isFirstInGroup = fieldIndex === 0
+                      const mapping = fieldMappings.find((m) => m.fieldId === field.name)
+                      const selectedFiles = mapping?.fileIds || []
+                      const noteForField = instructions[field.name] || mapping?.note || ""
+                      const promptText = prompts[field.name] || ""
+                      return (
+                        <tr key={`${group.groupName}-${field.name}`} className="border-b hover:bg-slate-50">
+                          {isFirstInGroup && (
+                            <td
+                              rowSpan={group.fields.length}
+                              className="px-4 py-3 align-top font-semibold text-sm border-r col-group"
+                            >
+                              {group.groupName}
+                            </td>
+                          )}
+                          <td className="px-4 py-3 align-top font-medium text-sm border-r col-field">{field.name}</td>
+                          <td className="px-4 py-3 align-top border-r col-instruction">
+                            <div className="space-y-3">
+                              <Textarea
+                                placeholder="プロンプトを入力してください"
+                                value={promptText}
+                                onChange={(e) => handlePromptChange(field.name, e.target.value)}
+                                className="min-h-[80px] text-sm"
+                              />
+                              <div className="text-xs leading-tight text-slate-600 space-y-1">
+                                <div>
+                                  <span className="font-semibold text-slate-800">登録ファイル：</span>
+                                  {selectedFiles.length > 0 ? selectedFiles.join("、") : "未選択"}
+                                </div>
+                                <div>
+                                  <span className="font-semibold text-slate-800">追加コメント：</span>
+                                  {noteForField.trim() ? noteForField : "なし"}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className={`px-4 py-3 align-top text-center border col-checkbox`}>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => void handleGenerate(field.name)}
+                              disabled={Boolean(generatingStates[field.name])}
+                              className="mb-2"
+                            >
+                              {generatingStates[field.name] ? (
+                                <>
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  生成中...
+                                </>
+                              ) : (
+                                "生成"
+                              )}
+                            </Button>
+                            {outputs[field.name] && (
+                              <p className="text-xs text-slate-600 mt-2">{outputs[field.name]}</p>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </ScrollArea>
+
+        <DialogFooter className="pt-4 gap-2 border-t">
+          <Button onClick={handleSave} variant="outline">
+            保存
+          </Button>
+          <Button onClick={handlePromptRegister} className="bg-yellow-500 hover:bg-yellow-600 text-white">
+            プロンプト登録
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+
