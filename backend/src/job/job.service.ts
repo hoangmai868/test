@@ -1,5 +1,10 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { randomUUID } from 'crypto';
+import OpenAI from 'openai';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateJobDto } from './dto/create-job.dto';
 import { UpdateJobDto } from './dto/update-job.dto';
@@ -7,8 +12,6 @@ import { JobFile, JobFileCategory, Prisma } from '../../generated/prisma/client'
 import { AzureBlobStorageService } from 'src/azure-blob/azure-blob.service';
 import { isTemplateGroup } from 'src/common/types/interface';
 import { RunPromptDto } from './dto/run-prompt.dto';
-import OpenAI from 'openai';
-import { PDFParse } from 'pdf-parse';
 interface TemplateJsonField {
   name: string;
   fileNames: string[];
@@ -26,7 +29,12 @@ interface TemplateJsonGroup {
 interface DocumentContent {
   fileKey: string;
   fileName: string;
-  text: string;
+  assistantFileId: string;
+}
+
+interface AssistantFileReference {
+  fileId: string;
+  fileName?: string;
 }
 
 interface PromptResult {
@@ -46,7 +54,7 @@ interface AzureOpenAiConfig {
 
 @Injectable()
 export class JobService {
-  private readonly openAiClient: OpenAI | null;
+  private readonly openAiApiKey: string | null;
   private readonly azureOpenAiConfig: AzureOpenAiConfig | null;
 
   constructor(
@@ -66,11 +74,7 @@ export class JobService {
       };
     }
 
-    this.openAiClient = this.azureOpenAiConfig
-      ? null
-      : process.env.OPENAI_API_KEY
-        ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-        : null;
+    this.openAiApiKey = process.env.OPENAI_API_KEY || null;
   }
 
   async create(createJobDto: CreateJobDto) {
@@ -102,6 +106,7 @@ export class JobService {
             jobId: newJob.id,
             fileName: file.fileName,
             fileKey: file.fileKey || null,
+            assistantFileId: file.assistantFileId ?? null,
             category: file.category,
           })),
         });
@@ -169,6 +174,7 @@ export class JobService {
               jobId: id,
               fileName: file.fileName,
               fileKey: file.fileKey || null,
+              assistantFileId: file.assistantFileId ?? null,
               category: file.category,
             })),
           });
@@ -263,7 +269,7 @@ export class JobService {
     //   result: "",
     // };
 
-    const documents = await this.extractDocuments(providedFileKeys, job.files);
+    const documents = await this.prepareDocuments(providedFileKeys, job.files);
     const promptText = runPromptDto.prompt.trim();
     if (!promptText) {
       throw new BadRequestException('プロンプトを入力してください');
@@ -273,21 +279,10 @@ export class JobService {
     const systemPrompt =
       job.template?.systemPrompt || 'You are a helpful legal assistant that summarizes PDF content accurately.';
 
-    const aggregatedText = documents
-      .map((doc) => `--- ${doc.fileName} ---\n${doc.text.trim() || '内容なし'}`)
-      .join('\n\n');
-
-    const payload = [
-      note ? `追加指示:\n${note}` : '',
-      `ファイル内容:\n${aggregatedText}`,
-      `プロンプト:\n${promptText}`,
-    ]
-      .filter(Boolean)
-      .join('\n\n');
-
-    const hasAiClient = Boolean(this.azureOpenAiConfig || this.openAiClient);
+    const hasAiClient = Boolean(this.azureOpenAiConfig || this.openAiApiKey);
+    const instructionText = this.buildInstructionText(promptText, note);
     const resultText = hasAiClient
-      ? await this.requestOpenAi(systemPrompt, payload)
+      ? await this.callOpenAi(systemPrompt, instructionText, documents)
       : this.buildFallbackResponse(promptText, documents);
 
     return {
@@ -475,116 +470,314 @@ export class JobService {
     return Array.from(normalizedKeys);
   }
 
-  private async extractDocuments(fileKeys: string[], jobFiles: JobFile[]): Promise<DocumentContent[]> {
-    const tasks = fileKeys.map(async (key) => {
-      const downloadUrl = await this.azureBlobStorage.generateDownloadUrl(key);
-      const response = await fetch(downloadUrl);
-      if (!response.ok) {
-        throw new BadRequestException(`ファイル (${key}) のダウンロードに失敗しました`);
-      }
-      let text = '';
-      try {
-        const parsed = new PDFParse({url: downloadUrl});
-        const result = await parsed.getText();
-        text = result.text;
-      } catch (error) {
-        throw new BadRequestException(`PDFの解析に失敗しました (${key}) : ${error.message}`);
-      }
+  private async prepareDocuments(
+    fileKeys: string[],
+    jobFiles: JobFile[],
+  ): Promise<DocumentContent[]> {
+    if (fileKeys.length === 0) {
+      return [];
+    }
 
+    const normalizedKeys = Array.from(
+      new Set(
+        fileKeys
+          .map((key) => key.replace(/^\//, ''))
+          .filter((key): key is string => Boolean(key)),
+      ),
+    );
+
+    const documents: DocumentContent[] = [];
+
+    for (const key of normalizedKeys) {
       const jobFile = jobFiles.find(
         (file) => file.fileKey?.replace(/^\//, '') === key,
       );
-      const fileName =
-        jobFile?.fileName || key.split('/').pop() || `blob-${key}`;
 
-      return {
+      if (!jobFile) {
+        throw new BadRequestException(`ファイル (${key}) が見つかりません`);
+      }
+
+      const fileName =
+        jobFile.fileName || key.split('/').pop() || `blob-${key}`;
+      const assistantFileId =
+        jobFile.assistantFileId ??
+        (await this.uploadAndUpdateAssistantFile(jobFile, key, fileName));
+
+      documents.push({
         fileKey: key,
         fileName,
-        text,
-      };
-    });
+        assistantFileId,
+      });
+    }
 
-    return Promise.all(tasks);
+    return documents;
   }
 
-  private async requestOpenAi(systemPrompt: string, userPrompt: string): Promise<string> {
+  private async uploadAndUpdateAssistantFile(
+    jobFile: JobFile,
+    blobName: string,
+    fileName: string,
+  ): Promise<string> {
+    if (!blobName) {
+      throw new BadRequestException('ファイルキーが存在しません');
+    }
+
+    const downloadUrl = await this.azureBlobStorage.generateDownloadUrl(blobName);
+    const tempFilePath = await this.downloadBlobToTempFile(downloadUrl, fileName);
+    console.log(`Downloaded blob ${blobName} to temp file ${tempFilePath}`);
+
+    try {
+      const assistantFileId = await this.uploadFileAndGetId(tempFilePath);
+      await this.prisma.jobFile.update({
+        where: { id: jobFile.id },
+        data: { assistantFileId },
+      });
+      jobFile.assistantFileId = assistantFileId;
+      return assistantFileId;
+    } finally {
+      await fs.promises.unlink(tempFilePath).catch(() => {});
+    }
+  }
+
+  private async downloadBlobToTempFile(
+    downloadUrl: string,
+    fileName: string,
+  ): Promise<string> {
+    const response = await fetch(downloadUrl);
+    if (!response.ok) {
+      throw new BadRequestException('ファイルのダウンロードに失敗しました');
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const extension = path.extname(fileName) || '.pdf';
+    const tempFilePath = path.join(os.tmpdir(), `${randomUUID()}${extension}`);
+    await fs.promises.writeFile(tempFilePath, buffer);
+    return tempFilePath;
+  }
+
+  private async uploadFileAndGetId(
+    filePath: string,
+    {
+      purpose = 'assistants',
+      client,
+    }: { purpose?: string; client?: OpenAI } = {},
+  ): Promise<string> {
+    const absolutePath = path.isAbsolute(filePath)
+      ? filePath
+      : path.resolve(process.cwd(), filePath);
+
+    if (!fs.existsSync(absolutePath)) {
+      throw new BadRequestException(`ファイルが見つかりません: ${absolutePath}`);
+    }
+
+    const openAiClient = client ?? this.getOpenAiClient();
+    const file = await openAiClient.files.create({
+      file: fs.createReadStream(absolutePath),
+      purpose: purpose as any,
+    });
+
+    console.log(`Uploaded file ${absolutePath} to OpenAI with file ID ${file.id}`);
+
+    if (!file?.id) {
+      throw new BadRequestException('ファイルのアップロードに失敗しました');
+    }
+
+    return file.id;
+  }
+
+  private getOpenAiClient(): OpenAI {
     if (this.azureOpenAiConfig) {
-      return this.requestAzureOpenAi(systemPrompt, userPrompt);
+      const { apiKey, endpoint, apiVersion } = this.azureOpenAiConfig;
+      return new OpenAI({
+        apiKey,
+        baseURL: `${endpoint}/openai/v1/`,
+        defaultHeaders: {
+          'api-key': apiKey,
+        },
+      });
     }
 
-    if (!this.openAiClient) {
-      throw new BadRequestException('OpenAI APIキーが設定されていません');
+    if (this.openAiApiKey) {
+      return new OpenAI({ apiKey: this.openAiApiKey });
     }
 
-    const response = await this.openAiClient.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
+    throw new BadRequestException('OpenAI APIキーが設定されていません');
+  }
+
+  private buildInstructionText(promptText: string, note: string): string {
+    const parts: string[] = [];
+    if (note) {
+      parts.push(`追加指示:\n${note}`);
+    }
+    if (promptText) {
+      parts.push(`プロンプト:\n${promptText}`);
+    }
+    return parts.join('\n\n').trim();
+  }
+
+  private async callOpenAi(
+    systemPrompt: string,
+    instructionText: string,
+    documents: DocumentContent[],
+  ): Promise<string> {
+    if (documents.length === 0) {
+      return this.requestOpenAiWithText(systemPrompt, instructionText);
+    }
+
+    console.log(`Calling OpenAI with ${documents.length} documents`);
+
+    const fileInputs: AssistantFileReference[] = documents.map((doc) => ({
+      fileId: doc.assistantFileId,
+      fileName: doc.fileName,
+    }));
+
+    return this.processByFileId(fileInputs, instructionText, { systemPrompt });
+  }
+
+  private async requestOpenAiWithText(
+    systemPrompt: string,
+    instructionText: string,
+  ): Promise<string> {
+    const client = this.getOpenAiClient();
+    const model = this.azureOpenAiConfig ? this.azureOpenAiConfig.deployment : 'gpt-5';
+    const payload: any[] = [];
+
+    if (systemPrompt) {
+      payload.push({
+        role: 'system',
+        content: [
+          {
+            type: 'input_text',
+            text: systemPrompt,
+          },
+        ],
+      });
+    }
+
+    payload.push({
+      role: 'user',
+      content: [
+        {
+          type: 'input_text',
+          text: instructionText || 'プロンプトに入力された内容を処理してください。',
+        },
       ],
+    });
+
+    console.log(`Requesting OpenAI with text prompt`, payload);
+
+    const response = await client.responses.create({
+      model,
+      input: payload,
       temperature: 0.2,
     });
 
-    const content = response?.choices?.[0]?.message?.content?.trim();
-    if (!content) {
-      throw new BadRequestException('AIからの応答を取得できませんでした');
-    }
-
-    return content;
+    return this.extractResponseText(response);
   }
 
-  private async requestAzureOpenAi(systemPrompt: string, userPrompt: string): Promise<string> {
-    const { apiKey, endpoint, deployment, apiVersion } = this.azureOpenAiConfig as AzureOpenAiConfig;
-    const url = new URL(
-      `/openai/deployments/${deployment}/chat/completions`,
-      `${endpoint}/`,
-    );
-    url.searchParams.set('api-version', apiVersion);
+  private async processByFileId(
+    fileInputs: string | AssistantFileReference[],
+    prompt: string,
+    options: {
+      model?: string;
+      client?: OpenAI;
+      systemPrompt?: string;
+    } = {},
+  ): Promise<string> {
+    const references = Array.isArray(fileInputs)
+      ? fileInputs.filter((input): input is AssistantFileReference => Boolean(input?.fileId))
+      : [{ fileId: fileInputs }];
 
-    const response = await fetch(url.toString(), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'api-key': apiKey,
-      },
-      body: JSON.stringify({
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
+    if (references.length === 0) {
+      throw new BadRequestException('assistantFileId が必要です');
+    }
+
+    const client = options.client ?? this.getOpenAiClient();
+    const model = options.model ?? (this.azureOpenAiConfig?.deployment ?? 'gpt-5');
+    const payload: any[] = [];
+
+    if (options.systemPrompt) {
+      payload.push({
+        role: 'system',
+        content: [
+          {
+            type: 'input_text',
+            text: options.systemPrompt,
+          },
         ],
-        temperature: 0.2,
-      }),
+      });
+    }
+
+    const userContent: Array<{
+      type: string;
+      file_id?: string;
+      text?: string;
+    }> = references.map((ref) => {
+      const content: {
+        type: string;
+        file_id: string;
+      } = {
+        type: 'input_file',
+        file_id: ref.fileId,
+      };
+      return content;
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new BadRequestException(
-        `OpenAI API request failed (${response.status}): ${errorText}`,
-      );
+    userContent.push({
+      type: 'input_text',
+      text: prompt,
+    });
+
+    payload.push({
+      role: 'user',
+      content: userContent,
+    });
+
+    const response = await client.responses.create({
+      model,
+      input: payload,
+      temperature: 0.2,
+    });
+
+    if (typeof response?.output_text === 'string' && response.output_text.trim()) {
+      return response.output_text.trim();
     }
 
-    const body = await response.json();
-    const content = body?.choices?.[0]?.message?.content?.trim();
-    if (!content) {
-      throw new BadRequestException('AIからの応答を取得できませんでした');
-    }
-
-    return content;
+    return this.extractResponseText(response);
   }
 
   private buildFallbackResponse(prompt: string, documents: DocumentContent[]): string {
     const fileList = documents.map((doc) => doc.fileName).join(', ');
-    const excerpt = documents
-      .map((doc) => `${doc.fileName}:\n${doc.text.slice(0, 200).trim() || '内容なし'}`)
-      .join('\n\n');
 
     return [
       'OpenAI APIキーが設定されていないため、簡易レスポンスを生成しました。',
       `プロンプト: ${prompt}`,
       `選択ファイル: ${fileList || 'なし'}`,
-      'ファイル抜粋:',
-      excerpt || 'テキストが取得できませんでした。',
     ].join('\n\n');
+  }
+
+  private extractResponseText(body: any): string {
+    const outputs = Array.isArray(body?.output) ? body.output : [];
+    const text = outputs
+      .flatMap((item) => (Array.isArray(item?.content) ? item.content : []))
+      .map((content) => {
+        if (typeof content?.text === 'string') {
+          return content.text;
+        }
+        if (typeof content?.value === 'string') {
+          return content.value;
+        }
+        return '';
+      })
+      .filter((chunk) => chunk.trim().length > 0)
+      .join('\n')
+      .trim();
+
+    if (!text) {
+      throw new BadRequestException('AIからの応答を取得できませんでした');
+    }
+
+    return text;
   }
 
   async copyJob(jobId: string) {
@@ -606,11 +799,19 @@ export class JobService {
     });
 
     const copiedBlobNames: string[] = [];
+    interface JobCopyResult {
+      fileName: string;
+      destinationBlobName: string;
+      category: JobFileCategory;
+      assistantFileId: string | null;
+    }
+
     const newJobFiles: {
       jobId: string;
       fileName: string;
       fileKey: string;
       category: JobFileCategory;
+      assistantFileId: string | null;
     }[] = [];
 
     try {
@@ -629,20 +830,17 @@ export class JobService {
             destinationBlobName,
           );
 
-          return {
+        return {
             fileName,
             destinationBlobName,
             category: file.category,
+          assistantFileId: file.assistantFileId ?? null,
           };
         }),
       );
 
       const successfulCopies = copyResults.filter(
-        (result): result is {
-          fileName: string;
-          destinationBlobName: string;
-          category: JobFileCategory;
-        } => result !== null,
+        (result): result is JobCopyResult => result !== null,
       );
 
       successfulCopies.forEach((result) => {
@@ -652,6 +850,7 @@ export class JobService {
           jobId: newJob.id,
           fileName: result.fileName,
           fileKey: `/${result.destinationBlobName}`,
+          assistantFileId: result.assistantFileId ?? null,
           category: result.category,
         });
       });

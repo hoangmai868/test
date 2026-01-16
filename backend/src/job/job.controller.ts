@@ -188,6 +188,7 @@ export class JobController {
   async runPrompt(@Param('jobId') jobId: string, @Body() runPromptDto: RunPromptDto): Promise<{ success: boolean; data?: any; message?: string }> {
     try {
       const result = await this.jobService.runPrompt(jobId, runPromptDto);
+      console.log('Prompt run result:', result);
       return {
         success: true,
         data: result,

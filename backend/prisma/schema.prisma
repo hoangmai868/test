@@ -81,6 +81,7 @@ model JobFile {
   category  JobFileCategory
   fileName  String?         @map("file_name")
   fileKey   String?         @map("file_key")
+  assistantFileId String?   @map("assistant_file_id")
   createdAt DateTime        @default(now()) @map("created_at") @db.Timestamptz
   job       Job             @relation(fields: [jobId], references: [id], onDelete: Cascade)
 

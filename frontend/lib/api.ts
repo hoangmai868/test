@@ -125,6 +125,7 @@ export const api = {
     files: Array<{
       fileName: string;
       fileKey?: string;
+      assistantFileId?: string;
       category: JobFileCategory;
     }>;
   }) => {
@@ -152,6 +153,7 @@ export const api = {
     files?: Array<{
       fileName: string;
       fileKey?: string;
+      assistantFileId?: string;
       category: JobFileCategory;
     }>;
   }) => {

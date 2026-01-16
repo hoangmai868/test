@@ -23,6 +23,7 @@ export interface FileInfo {
   name: string
   fileKey?: string
   category?: JobFileCategory
+  assistantFileId?: string
 }
 
 export type FileInfoByCategory = {
@@ -193,11 +194,17 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       
       if (jobData.files && Array.isArray(jobData.files)) {
         const categorizedFiles = await Promise.all(
-          jobData.files.map(async (file: { fileName?: string; fileKey?: string; category?: JobFileCategory }) => {
+          jobData.files.map(async (file: {
+            fileName?: string
+            fileKey?: string
+            category?: JobFileCategory
+            assistantFileId?: string
+          }) => {
             const fileInfo: FileInfo = {
               name: file.fileName || "",
               fileKey: file.fileKey,
               category: file.category,
+              assistantFileId: file.assistantFileId,
             }
 
             return { fileInfo, category: file.category }
@@ -338,6 +345,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
               files.push({
                 fileName: f.name,
                 fileKey: f.fileKey,
+          assistantFileId: f.assistantFileId,
                 category,
               })
             })

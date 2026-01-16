@@ -11,6 +11,10 @@ export class JobFileDto {
   fileKey?: string;
 
   @IsString()
+  @IsOptional()
+  assistantFileId?: string;
+
+  @IsString()
   @IsNotEmpty()
   category: 'customer_info' | 'contract_documents' | 'registry_transcript';
 }

@@ -8,5 +8,6 @@ export type JobFileCategory =
 export interface JobFileInput {
   fileName: string
   fileKey?: string
+  assistantFileId?: string
   category: JobFileCategory
 }
