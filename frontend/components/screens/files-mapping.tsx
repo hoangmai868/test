@@ -18,6 +18,7 @@ import { useAuth } from "@/contexts/auth-context"
 import { useUploadContext } from "@/contexts/upload-context"
 import type { FileInfo, FileInfoByCategory } from "@/contexts/upload-context"
 import type { JobFileCategory as FileCategory } from "@/types/shared/job-file"
+import { buildFieldIdentifier, getFieldNameFromIdentifier } from "@/lib/field-identifier"
 interface Field {
   name: string
   prompt?: string
@@ -59,6 +60,13 @@ interface FilesMappingProps {
   canProceed: boolean
 }
 
+interface DisplayFile {
+  identifier: string
+  name: string
+  fileKey?: string
+  isLoaded: boolean
+}
+
 const truncateFileName = (fileName: string): string => {
   return fileName.length > 15 ? fileName.substring(0, 12) + "..." : fileName
 }
@@ -89,7 +97,8 @@ const buildPromptsFromFieldGroups = (fieldGroups: FieldGroup[]): Record<string, 
   fieldGroups.forEach((group) => {
     group.fields.forEach((field) => {
       if (field.name) {
-        promptEntries[field.name] = field.prompt ?? ""
+        const fieldId = buildFieldIdentifier(group.groupName, field.name)
+        promptEntries[fieldId] = field.prompt ?? ""
       }
     })
   })
@@ -213,9 +222,13 @@ export default function FilesMapping({
     const lookup: Record<string, string> = {}
     const appendFileKeys = (items?: FileInfo[]) => {
       items?.forEach((file) => {
-        if (file.name && file.fileKey) {
+        if (file.fileKey) {
           const normalizedKey = file.fileKey.replace(/^\//, '')
-          if (normalizedKey) {
+          if (!normalizedKey) {
+            return
+          }
+          lookup[file.fileKey] = normalizedKey
+          if (file.name) {
             lookup[file.name] = normalizedKey
           }
         }
@@ -242,77 +255,93 @@ export default function FilesMapping({
     setJobTemplateId(selectedTemplateDetail?.id ?? null)
   }
 
-  const handleCheckboxChange = (fieldName: string, fileName: string, checked: boolean) => {
+  const handleCheckboxChange = (fieldId: string, fileId: string, checked: boolean) => {
     setMappings((prev) => ({
       ...prev,
-      [fieldName]: {
-        ...(prev[fieldName] || {}),
-        [fileName]: checked,
+      [fieldId]: {
+        ...(prev[fieldId] || {}),
+        [fileId]: checked,
       },
     }))
 
     setFieldMappings((prev) => {
-      const existingMapping = prev.find((m) => m.fieldId === fieldName)
+      const legacyName = getFieldNameFromIdentifier(fieldId)
+      const existingMapping = prev.find(
+        (m) => m.fieldId === fieldId || m.fieldId === legacyName,
+      )
 
       if (existingMapping) {
         return prev.map((m) => {
-          if (m.fieldId === fieldName) {
+          if (m.fieldId === fieldId || m.fieldId === legacyName) {
             const newFileIds = checked
-              ? [...m.fileIds, fileName].filter((v, i, a) => a.indexOf(v) === i)
-              : m.fileIds.filter((id) => id !== fileName)
-            return { ...m, fileIds: newFileIds }
+              ? [...m.fileIds, fileId].filter((v, i, a) => a.indexOf(v) === i)
+              : m.fileIds.filter((id) => id !== fileId)
+            return { ...m, fieldId, fileIds: newFileIds }
           }
           return m
         })
       } else if (checked) {
-        return [...prev, { fieldId: fieldName, fileIds: [fileName], note: instructions[fieldName] || "", extractedValue: "" }]
+        return [
+          ...prev,
+          { fieldId, fileIds: [fileId], note: instructions[fieldId] || "", extractedValue: "" },
+        ]
       }
 
       return prev
     })
   }
 
-  const handleInstructionChange = (fieldName: string, instruction: string) => {
-    setInstructions((prev) => ({ ...prev, [fieldName]: instruction }))
+  const handleInstructionChange = (fieldId: string, instruction: string) => {
+    setInstructions((prev) => ({ ...prev, [fieldId]: instruction }))
 
     setFieldMappings((prev) => {
-      const existingMapping = prev.find((m) => m.fieldId === fieldName)
+      const legacyName = getFieldNameFromIdentifier(fieldId)
+      const existingMapping = prev.find(
+        (m) => m.fieldId === fieldId || m.fieldId === legacyName,
+      )
 
       if (existingMapping) {
-        return prev.map((m) => (m.fieldId === fieldName ? { ...m, note: instruction } : m))
+        return prev.map((m) =>
+          m.fieldId === fieldId || m.fieldId === legacyName ? { ...m, fieldId, note: instruction } : m,
+        )
       } else {
-        return [...prev, { fieldId: fieldName, fileIds: [], note: instruction, extractedValue: "" }]
+        return [...prev, { fieldId, fileIds: [], note: instruction, extractedValue: "" }]
       }
     })
   }
 
-  const handlePromptChange = (fieldName: string, value: string) => {
-    setEditedPrompts((prev) => ({ ...prev, [fieldName]: value }))
+  const handlePromptChange = (fieldId: string, value: string) => {
+    setEditedPrompts((prev) => ({ ...prev, [fieldId]: value }))
   }
 
-  const handleGenerate = async (fieldName: string) => {
-    setGeneratingStates((prev) => ({ ...prev, [fieldName]: true }))
-    setOutputs((prev) => ({ ...prev, [fieldName]: "" }))
+  const handleGenerate = async (fieldId: string) => {
+    const legacyName = getFieldNameFromIdentifier(fieldId)
+    setGeneratingStates((prev) => ({ ...prev, [fieldId]: true }))
+    setOutputs((prev) => ({ ...prev, [fieldId]: "" }))
 
     if (!jobId) {
       setOutputs((prev) => ({
         ...prev,
-        [fieldName]: "ジョブを一時保存してから生成してください。",
+        [fieldId]: "ジョブを一時保存してから生成してください。",
       }))
-      setGeneratingStates((prev) => ({ ...prev, [fieldName]: false }))
+      setGeneratingStates((prev) => ({ ...prev, [fieldId]: false }))
       return
     }
 
-    const promptValue = effectivePrompts[fieldName] || ""
-    const mapping = fieldMappings.find((mapping) => mapping.fieldId === fieldName)
-    const noteValue = instructions[fieldName] || mapping?.note
+    const promptValue =
+      effectivePrompts[fieldId] || effectivePrompts[legacyName] || ""
+    const mapping =
+      fieldMappings.find((mapping) => mapping.fieldId === fieldId) ||
+      fieldMappings.find((mapping) => mapping.fieldId === legacyName)
+    const noteValue =
+      instructions[fieldId] || instructions[legacyName] || mapping?.note
 
     if (!mapping || mapping.fileIds.length === 0) {
       setOutputs((prev) => ({
         ...prev,
-        [fieldName]: "ファイルを選択してください。",
+        [fieldId]: "ファイルを選択してください。",
       }))
-      setGeneratingStates((prev) => ({ ...prev, [fieldName]: false }))
+      setGeneratingStates((prev) => ({ ...prev, [fieldId]: false }))
       return
     }
 
@@ -320,9 +349,9 @@ export default function FilesMapping({
     if (missingKeys.length > 0) {
       setOutputs((prev) => ({
         ...prev,
-        [fieldName]: "選択したファイルのキーが利用できません。ジョブを保存してから再試行してください。",
+        [fieldId]: "選択したファイルのキーが利用できません。ジョブを保存してから再試行してください。",
       }))
-      setGeneratingStates((prev) => ({ ...prev, [fieldName]: false }))
+      setGeneratingStates((prev) => ({ ...prev, [fieldId]: false }))
       return
     }
 
@@ -337,19 +366,19 @@ export default function FilesMapping({
     try {
       const result = await api.runPrompt({
         jobId,
-        fieldName,
+        fieldName: fieldId,
         prompt: promptValue,
         note: noteValue,
         fileKeys,
       })
-      setOutputs((prev) => ({ ...prev, [fieldName]: result.result }))
+      setOutputs((prev) => ({ ...prev, [fieldId]: result.result }))
     } catch (error) {
       setOutputs((prev) => ({
         ...prev,
-        [fieldName]: error instanceof Error ? error.message : "生成に失敗しました",
+        [fieldId]: error instanceof Error ? error.message : "生成に失敗しました",
       }))
     } finally {
-      setGeneratingStates((prev) => ({ ...prev, [fieldName]: false }))
+      setGeneratingStates((prev) => ({ ...prev, [fieldId]: false }))
     }
   }
 
@@ -432,7 +461,10 @@ export default function FilesMapping({
             category,
           })
           if (file.fileKey) {
-            fileKeyMap[file.name] = file.fileKey
+            if (file.name) {
+              fileKeyMap[file.name] = file.fileKey
+            }
+            fileKeyMap[file.fileKey] = file.fileKey
           }
         })
       }
@@ -467,7 +499,11 @@ export default function FilesMapping({
       // Build template_json from fieldMappings in grouped format
       const templateJson: TemplateJsonGroup[] = currentFieldGroups.map((group) => {
         const groupFields: TemplateJsonField[] = group.fields.map((field) => {
-          const mapping = fieldMappings.find((m) => m.fieldId === field.name)
+          const fieldId = buildFieldIdentifier(group.groupName, field.name)
+          const legacyFieldName = field.name
+          const mapping =
+            fieldMappings.find((m) => m.fieldId === fieldId) ||
+            fieldMappings.find((m) => m.fieldId === legacyFieldName)
 
           // Extract fileNames and fileKeys from fileIds
           const fileNames: string[] = []
@@ -481,7 +517,8 @@ export default function FilesMapping({
             }
           })
 
-          const promptValue = effectivePrompts[field.name] || ""
+          const promptValue =
+            effectivePrompts[fieldId] || effectivePrompts[legacyFieldName] || ""
           return {
             name: field.name,
             fileNames,
@@ -543,20 +580,23 @@ export default function FilesMapping({
           if (isGroupedFormat) {
             // Transform from grouped format to flat format
             fetchedJob.templateJson.forEach(
-              (group: TemplateJsonGroup) => {
-                group.fields.forEach((field) => {
-                  flatMappings.push({
-                    fieldId: field.name,
-                    fileIds: field.fileNames || [],
-                    note: field.note || "",
-                    extractedValue: field.extractedValue || "",
-                    prompt: field.prompt || "",
-                  })
-                  if (field.name) {
-                    fetchedPromptEntries[field.name] = field.prompt || ""
-                  }
+            (group: TemplateJsonGroup) => {
+              group.fields.forEach((field) => {
+                const normalizedFieldId = field.name
+                  ? buildFieldIdentifier(group.groupName || "", field.name)
+                  : field.name || ""
+                flatMappings.push({
+                  fieldId: normalizedFieldId,
+                  fileIds: field.fileNames || [],
+                  note: field.note || "",
+                  extractedValue: field.extractedValue || "",
+                  prompt: field.prompt || "",
                 })
-              },
+                if (field.name) {
+                  fetchedPromptEntries[normalizedFieldId] = field.prompt || ""
+                }
+              })
+            },
             )
           } else {
             // Old flat format (backward compatibility)
@@ -650,27 +690,51 @@ export default function FilesMapping({
     }
   }, [handleSaveJob, jobId, registerStepSaveHandler])
 
-  // Combine loaded files (from API) with newly uploaded files
-  const getCombinedFileNames = (category: "customerInfo" | "contractDocs" | "registryDocs") => {
-    const loadedNames = loadedFileInfo?.[category]?.map(f => f.name) || []
-    const uploadedNames = uploadedFiles[category].map(f => f.name)
-    return [...loadedNames, ...uploadedNames]
-  }
+// Combine loaded files (from API) with newly uploaded files
+const getCombinedFiles = (category: "customerInfo" | "contractDocs" | "registryDocs"): DisplayFile[] => {
+  const loadedFiles: DisplayFile[] =
+    loadedFileInfo?.[category]?.map((file) => ({
+      identifier: file.fileKey || file.name,
+      name: file.name,
+      fileKey: file.fileKey,
+      isLoaded: true,
+    })) || []
 
-  const fileCategories = [
-    {
-      category: "顧客情報",
-      files: getCombinedFileNames("customerInfo"),
-    },
-    {
-      category: "契約書類等",
-      files: getCombinedFileNames("contractDocs"),
-    },
-    {
-      category: "登記簿謄本",
-      files: getCombinedFileNames("registryDocs"),
-    },
-  ].filter((category) => category.files.length > 0)
+  const uploadedFilesList: DisplayFile[] = uploadedFiles[category].map((file, index) => ({
+    identifier: `${category}-uploaded-${index}-${file.name}`,
+    name: file.name,
+    isLoaded: false,
+  }))
+
+  return [...loadedFiles, ...uploadedFilesList]
+}
+
+const fileCategories = [
+  {
+    category: "顧客情報",
+    files: getCombinedFiles("customerInfo"),
+  },
+  {
+    category: "契約書類等",
+    files: getCombinedFiles("contractDocs"),
+  },
+  {
+    category: "登記簿謄本",
+    files: getCombinedFiles("registryDocs"),
+  },
+].filter((category) => category.files.length > 0)
+
+  const fileDisplayNameLookup = useMemo(() => {
+    const lookup: Record<string, string> = {}
+    fileCategories.forEach((category) => {
+      category.files.forEach((file) => {
+        if (file.identifier) {
+          lookup[file.identifier] = file.name
+        }
+      })
+    })
+    return lookup
+  }, [fileCategories])
 
   const renderFieldRows = (): JSX.Element[] => {
     const rows: JSX.Element[] = []
@@ -681,6 +745,9 @@ export default function FilesMapping({
       group.fields.forEach((field, fieldIndex) => {
         const isFirstFieldInGroup = fieldIndex === 0
         const rowKey = `${group.groupName}-${field.name}`
+        const fieldId = buildFieldIdentifier(group.groupName, field.name)
+        const legacyFieldName = field.name
+        const currentMappings = mappings[fieldId] || mappings[legacyFieldName] || {}
 
         rows.push(
           <tr key={rowKey} className="hover:bg-muted/50">
@@ -702,30 +769,34 @@ export default function FilesMapping({
             </td>
 
             {fileCategories.map((category) =>
-              category.files.map((fileName, fileIdx) => (
-                <td
-                  key={`${category.category}-${fileIdx}`}
-                  className={`col-checkbox p-0 text-center cursor-pointer hover:bg-muted/50`}
-                  onClick={() => {
-                    const currentValue = mappings[field.name]?.[fileName] || false
-                    handleCheckboxChange(field.name, fileName, !currentValue)
-                  }}
-                >
-                  <div className="flex items-center justify-center h-full py-2">
-                    <Checkbox
-                      checked={mappings[field.name]?.[fileName] || false}
-                      onCheckedChange={(checked) => handleCheckboxChange(field.name, fileName, checked as boolean)}
-                    />
-                  </div>
-                </td>
-              )),
+              category.files.map((file) => {
+                const fileCandidates = [file.identifier, file.name].filter(Boolean)
+                const currentValue = fileCandidates.some((candidate) => currentMappings[candidate])
+
+                return (
+                  <td
+                    key={`${category.category}-${file.identifier}`}
+                    className={`col-checkbox p-0 text-center cursor-pointer hover:bg-muted/50`}
+                    onClick={() => handleCheckboxChange(fieldId, file.identifier, !currentValue)}
+                  >
+                    <div className="flex items-center justify-center h-full py-2">
+                      <Checkbox
+                        checked={currentValue}
+                        onCheckedChange={(checked) =>
+                          handleCheckboxChange(fieldId, file.identifier, checked as boolean)
+                        }
+                      />
+                    </div>
+                  </td>
+                )
+              }),
             )}
 
             <td className={`instruction-cell p-2 text-left !col-instruction`}>
               <Textarea
                 placeholder="追加指示を入力"
-                value={instructions[field.name] || ""}
-                onChange={(e) => handleInstructionChange(field.name, e.target.value)}
+                value={instructions[fieldId] || instructions[legacyFieldName] || ""}
+                onChange={(e) => handleInstructionChange(fieldId, e.target.value)}
                 rows={1}
                 className="text-sm w-full resize-y overflow-auto min-h-[1.5rem] max-h-[4.5rem]"
               />
@@ -841,13 +912,13 @@ export default function FilesMapping({
 
                   <tr>
                     {fileCategories.map((category) =>
-                      category.files.map((fileName, fileIdx) => (
+                      category.files.map((file) => (
                         <th
-                          key={`${category.category}-${fileIdx}`}
+                          key={`${category.category}-${file.identifier}`}
                           className="sticky-header-2 col-checkbox p-0 text-center align-middle"
                         >
-                          <div className="w-full flex items-center justify-center vertical-text" title={fileName}>
-                            {truncateFileName(fileName)}
+                          <div className="w-full flex items-center justify-center vertical-text" title={file.name}>
+                            {truncateFileName(file.name)}
                           </div>
                         </th>
                       )),
@@ -898,6 +969,7 @@ export default function FilesMapping({
         handleGenerate={handleGenerate}
         handleSave={handleSave}
         handlePromptRegister={handlePromptRegister}
+        fileNameLookup={fileDisplayNameLookup}
       />
       <ConfirmReturnTopModal
         open={isConfirmReturnOpen}

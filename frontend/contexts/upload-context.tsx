@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/auth-context"
 import { api } from "@/lib/api"
 import { JobFileCategory, JobFileInput } from "@/types/shared/job-file"
 import { uploadToBlob } from "@/lib/blob-upload"
+import { buildFieldIdentifier } from "@/lib/field-identifier"
 
 type UploadCategoryKey = "customerInfo" | "contractDocs" | "registryDocs"
 const CATEGORY_KEYS: UploadCategoryKey[] = ["customerInfo", "contractDocs", "registryDocs"]
@@ -231,7 +232,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         contractDocs: contractDocsFiles,
         registryDocs: registryDocsFiles,
       })
-      
+
       // Parse field mappings from templateJson (handle both grouped and flat formats)
       if (jobData.templateJson && Array.isArray(jobData.templateJson)) {
         // Check if it's the new grouped format or old flat format
@@ -244,17 +245,20 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         if (isGroupedFormat) {
           // Transform from grouped format to flat format
           jobData.templateJson.forEach((group: { groupName: string; fields: Array<{ name: string; fileNames: string[]; fileKeys?: string[]; note: string; extractedValue: string; prompt?: string }> }) => {
-            group.fields.forEach((field) => {
-              mappings.push({
-                fieldId: field.name,
-                fileIds: field.fileNames || [],
-                note: field.note || "",
-                extractedValue: field.extractedValue || "",
-              })
-              if (field.name) {
-                promptValues[field.name] = field.prompt || ""
-              }
-            })
+                group.fields.forEach((field) => {
+                  const normalizedFieldId = field.name
+                    ? buildFieldIdentifier(group.groupName || "", field.name)
+                    : field.name || ""
+                  mappings.push({
+                    fieldId: normalizedFieldId,
+                    fileIds: field.fileNames || [],
+                    note: field.note || "",
+                    extractedValue: field.extractedValue || "",
+                  })
+                  if (field.name) {
+                    promptValues[normalizedFieldId] = field.prompt || ""
+                  }
+                })
           })
         } else {
           // Old flat format (backward compatibility)

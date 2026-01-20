@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Loader2 } from "lucide-react"
 import { Textarea } from "@/components/ui/textarea"
+import { buildFieldIdentifier } from "@/lib/field-identifier"
 
 interface PromptField {
   name: string
@@ -35,10 +36,11 @@ interface PromptSettingsModalProps {
   prompts: Record<string, string>
   outputs: Record<string, string>
   generatingStates: Record<string, boolean>
-  handlePromptChange: (fieldName: string, value: string) => void
-  handleGenerate: (fieldName: string) => Promise<void>
+  handlePromptChange: (fieldId: string, value: string) => void
+  handleGenerate: (fieldId: string) => Promise<void>
   handleSave: () => void
   handlePromptRegister: () => void
+  fileNameLookup: Record<string, string>
 }
 
 export default function PromptSettingsModal({
@@ -55,6 +57,7 @@ export default function PromptSettingsModal({
   handleGenerate,
   handleSave,
   handlePromptRegister,
+  fileNameLookup,
 }: PromptSettingsModalProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -98,10 +101,19 @@ export default function PromptSettingsModal({
                   <Fragment key={`${group.groupName}-${groupIndex}`}>
                     {group.fields.map((field, fieldIndex) => {
                       const isFirstInGroup = fieldIndex === 0
-                      const mapping = fieldMappings.find((m) => m.fieldId === field.name)
+                      const fieldId = buildFieldIdentifier(group.groupName, field.name)
+                      const legacyFieldName = field.name
+                      const mapping =
+                        fieldMappings.find((m) => m.fieldId === fieldId) ||
+                        fieldMappings.find((m) => m.fieldId === legacyFieldName)
                       const selectedFiles = mapping?.fileIds || []
-                      const noteForField = instructions[field.name] || mapping?.note || ""
-                      const promptText = prompts[field.name] || ""
+                      const selectedFileNames = selectedFiles.map(
+                        (fileId) => fileNameLookup[fileId] || fileId,
+                      )
+                      const noteForField =
+                        instructions[fieldId] || instructions[legacyFieldName] || mapping?.note || ""
+                      const promptText =
+                        prompts[fieldId] || prompts[legacyFieldName] || ""
                       return (
                         <tr key={`${group.groupName}-${field.name}`} className="border-b hover:bg-slate-50">
                           {isFirstInGroup && (
@@ -118,13 +130,15 @@ export default function PromptSettingsModal({
                               <Textarea
                                 placeholder="プロンプトを入力してください"
                                 value={promptText}
-                                onChange={(e) => handlePromptChange(field.name, e.target.value)}
+                                onChange={(e) => handlePromptChange(fieldId, e.target.value)}
                                 className="min-h-[80px] text-sm"
                               />
                               <div className="text-xs leading-tight text-slate-600 space-y-1">
                                 <div>
                                   <span className="font-semibold text-slate-800">登録ファイル：</span>
-                                  {selectedFiles.length > 0 ? selectedFiles.join("、") : "未選択"}
+                                  {selectedFileNames.length > 0
+                                    ? selectedFileNames.join("、")
+                                    : "未選択"}
                                 </div>
                                 <div>
                                   <span className="font-semibold text-slate-800">追加コメント：</span>
@@ -137,11 +151,17 @@ export default function PromptSettingsModal({
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => void handleGenerate(field.name)}
-                              disabled={Boolean(generatingStates[field.name])}
+                              onClick={() => void handleGenerate(fieldId)}
+                              disabled={
+                                Boolean(
+                                  generatingStates[fieldId] ||
+                                    generatingStates[legacyFieldName],
+                                )
+                              }
                               className="mb-2"
                             >
-                              {generatingStates[field.name] ? (
+                              {generatingStates[fieldId] ||
+                              generatingStates[legacyFieldName] ? (
                                 <>
                                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                   生成中...
@@ -150,8 +170,10 @@ export default function PromptSettingsModal({
                                 "生成"
                               )}
                             </Button>
-                            {outputs[field.name] && (
-                              <p className="text-xs text-slate-600 mt-2">{outputs[field.name]}</p>
+                            {(outputs[fieldId] || outputs[legacyFieldName]) && (
+                              <p className="text-xs text-slate-600 mt-2">
+                                {outputs[fieldId] || outputs[legacyFieldName]}
+                              </p>
                             )}
                           </td>
                         </tr>

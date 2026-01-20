@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Download, Copy, Edit, Plus, Loader2 } from "lucide-react"
 import { api } from "@/lib/api"
+import { buildFieldIdentifier } from "@/lib/field-identifier"
 import { useAuth } from "@/contexts/auth-context"
 import { JobStatus, JOB_STATUS_LIST } from "@/types/shared/job-status"
 
@@ -70,13 +71,16 @@ const transformJobData = (job: any): JobData => {
       // Transform from grouped format to flat format
       job.templateJson.forEach((group: { groupName: string; fields: Array<{ name: string; fileNames: string[]; fileKeys?: string[]; note: string; extractedValue: string }> }) => {
         group.fields.forEach((field) => {
-          fieldMappings.push({
-            fieldId: field.name,
-            fieldName: field.name,
-            fileIds: field.fileNames || [],
-            note: field.note || '',
-            extractedValue: field.extractedValue || '',
-          })
+      const normalizedFieldId = field.name
+        ? buildFieldIdentifier(group.groupName || '', field.name)
+        : field.name || ''
+      fieldMappings.push({
+        fieldId: normalizedFieldId,
+        fieldName: field.name,
+        fileIds: field.fileNames || [],
+        note: field.note || '',
+        extractedValue: field.extractedValue || '',
+      })
         })
       })
     } else {
