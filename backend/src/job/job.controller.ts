@@ -13,17 +13,21 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { AzureBlobStorageService } from 'src/azure-blob/azure-blob.service';
+import { InjectQueue } from '@nestjs/bullmq';
 import { JobService } from './job.service';
 import { CreateJobDto } from './dto/create-job.dto';
 import { RunPromptDto } from './dto/run-prompt.dto';
 import { UpdateJobDto } from './dto/update-job.dto';
 import type { Response } from 'express';
+import type { Queue } from 'bullmq';
 
 @Controller('jobs')
 export class JobController {
   constructor(
     private readonly jobService: JobService,
-    private readonly azureBlob: AzureBlobStorageService
+    private readonly azureBlob: AzureBlobStorageService,
+    @InjectQueue('job-queue')
+    private readonly jobQueue: Queue,
   ) {}
 
   @Get('download-url')
@@ -204,7 +208,7 @@ export class JobController {
   @Post(':jobId/run')
   async runJob(@Param('jobId') jobId: string): Promise<{ success: boolean; data?: any; message?: string }> {
     try {
-      await this.jobService.startJobRun(jobId);
+      await this.jobQueue.add('run-job', { jobId }, { removeOnComplete: true });
       return {
         success: true,
         data: { message: 'ジョブをバックグラウンドで実行予約しました' },

@@ -56,6 +56,7 @@ interface AzureOpenAiConfig {
 export class JobService {
   private readonly openAiApiKey: string | null;
   private readonly azureOpenAiConfig: AzureOpenAiConfig | null;
+  private readonly jobFieldBatchSize: number;
 
   constructor(
     private prisma: PrismaService,
@@ -75,6 +76,9 @@ export class JobService {
     }
 
     this.openAiApiKey = process.env.OPENAI_API_KEY || null;
+    const parsedBatchSize = Number(process.env.JOB_FIELD_BATCH_SIZE);
+    this.jobFieldBatchSize =
+      Number.isFinite(parsedBatchSize) && parsedBatchSize >= 1 ? parsedBatchSize : 5;
   }
 
   async create(createJobDto: CreateJobDto) {
@@ -315,9 +319,7 @@ export class JobService {
 
     console.log(`Starting background job run for job ${jobId}`);
 
-    void this.processJobFields(jobId, templateGroups).catch((error) => {
-      console.error(`Background job run failed for job ${jobId}:`, error);
-    });
+    await this.processJobFields(jobId, templateGroups);
   }
 
   private async processJobFields(jobId: string, templateGroups?: TemplateJsonGroup[]): Promise<void> {
@@ -339,15 +341,24 @@ export class JobService {
     }));
 
     try {
+      const batchSize = Math.max(1, this.jobFieldBatchSize);
       for (const group of workingGroups) {
-        for (const field of group.fields) {
-          const runResult = await this.runPrompt(jobId, {
-            fieldName: field.name,
-            prompt: field.prompt,
-            note: field.note,
-            fileKeys: field.fileKeys,
+        for (let start = 0; start < group.fields.length; start += batchSize) {
+          const batch = group.fields.slice(start, start + batchSize);
+          const batchResults = await Promise.all(
+            batch.map(async (field) => {
+              const runResult = await this.runPrompt(jobId, {
+                fieldName: field.name,
+                prompt: field.prompt,
+                note: field.note,
+                fileKeys: field.fileKeys,
+              });
+              return { field, result: runResult.result };
+            }),
+          );
+          batchResults.forEach(({ field, result }) => {
+            field.extractedValue = result;
           });
-          field.extractedValue = runResult.result;
         }
       }
 
