@@ -131,7 +131,8 @@ export default function PromptSettingsModal({
                                 placeholder="プロンプトを入力してください"
                                 value={promptText}
                                 onChange={(e) => handlePromptChange(fieldId, e.target.value)}
-                                className="min-h-[80px] text-sm"
+                                rows={4}
+                                className="h-[80px] text-sm resize-y overflow-auto"
                               />
                               <div className="text-xs leading-tight text-slate-600 space-y-1">
                                 <div>

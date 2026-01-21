@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Upload, Trash2, Home } from "lucide-react"
+import { Upload, Trash2, Home, ChevronRight } from "lucide-react"
 import { useUploadContext } from "@/contexts/upload-context"
 import { api } from "@/lib/api"
 
@@ -52,6 +52,7 @@ export default function UploadFiles({ onNext }: UploadFilesProps) {
     contractDocs: false,
     registryDocs: false,
   })
+  const [jobNameError, setJobNameError] = useState<string>("")
 
   const customerInfoRef = useRef<HTMLInputElement>(null)
   const contractDocsRef = useRef<HTMLInputElement>(null)
@@ -242,9 +243,21 @@ export default function UploadFiles({ onNext }: UploadFilesProps) {
                   <Input
                     id="job-name"
                     value={jobName}
-                    onChange={(e) => setJobName(e.target.value)}
+                    onChange={(e) => {
+                      setJobName(e.target.value)
+                      if (jobNameError) {
+                        setJobNameError("")
+                      }
+                    }}
                     placeholder="例: 顧客A - データ取込"
+                    aria-invalid={Boolean(jobNameError)}
+                    aria-describedby={jobNameError ? "job-name-error" : undefined}
                   />
+                  {jobNameError && (
+                    <p className="text-xs text-destructive" id="job-name-error">
+                      {jobNameError}
+                    </p>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -325,6 +338,11 @@ export default function UploadFiles({ onNext }: UploadFilesProps) {
             <div className="flex justify-end">
               <Button
                 onClick={async () => {
+                  if (!jobName.trim()) {
+                    setJobNameError("ジョブ名を入力してください")
+                    return
+                  }
+
                   const draftId = await autoSaveJob()
                   onNext(draftId)
                 }}
@@ -332,6 +350,7 @@ export default function UploadFiles({ onNext }: UploadFilesProps) {
                 className="w-full sm:w-auto"
               >
                 次へ
+                <ChevronRight className="ml-2 h-4 w-4" />
               </Button>
             </div>
           </div>
