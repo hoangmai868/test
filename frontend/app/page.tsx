@@ -16,6 +16,9 @@ interface JobData {
   id: string | number
   name: string
   date: string
+  createdAt: string
+  templateName?: string
+  completedAt: string
   files: number
   progress?: number
   // Step 1: Uploaded files
@@ -29,6 +32,7 @@ interface JobData {
     fieldId: string
     fieldName?: string
     fileIds: string[]
+    fileNames: string[]
     note: string
     extractedValue: string
   }>
@@ -59,6 +63,7 @@ const transformJobData = (job: any): JobData => {
     fieldId: string
     fieldName?: string
     fileIds: string[]
+    fileNames: string[]
     note: string
     extractedValue: string
   }> = []
@@ -71,16 +76,17 @@ const transformJobData = (job: any): JobData => {
       // Transform from grouped format to flat format
       job.templateJson.forEach((group: { groupName: string; fields: Array<{ name: string; fileNames: string[]; fileKeys?: string[]; note: string; extractedValue: string }> }) => {
         group.fields.forEach((field) => {
-      const normalizedFieldId = field.name
-        ? buildFieldIdentifier(group.groupName || '', field.name)
-        : field.name || ''
-      fieldMappings.push({
-        fieldId: normalizedFieldId,
-        fieldName: field.name,
-        fileIds: field.fileNames || [],
-        note: field.note || '',
-        extractedValue: field.extractedValue || '',
-      })
+          const normalizedFieldId = field.name
+            ? buildFieldIdentifier(group.groupName || '', field.name)
+            : field.name || ''
+          fieldMappings.push({
+            fieldId: normalizedFieldId,
+            fieldName: field.name,
+            fileIds: field.fileNames || [],
+            fileNames: field.fileNames || [],
+            note: field.note || '',
+            extractedValue: field.extractedValue || '',
+          })
         })
       })
     } else {
@@ -89,6 +95,7 @@ const transformJobData = (job: any): JobData => {
         fieldId: mapping.fieldId || '',
         fieldName: mapping.fieldName || '',
         fileIds: mapping.fileIds || mapping.fileNames || [],
+        fileNames: mapping.fileNames || mapping.fileIds || [],
         note: mapping.note || '',
         extractedValue: mapping.extractedValue || '',
       }))
@@ -96,12 +103,20 @@ const transformJobData = (job: any): JobData => {
   }
 
   const totalFiles = uploadedFiles.customerInfo.length + uploadedFiles.contractDocs.length + uploadedFiles.registryDocs.length
-  const date = job.createdAt ? new Date(job.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+  const createdAtDate = job.createdAt ? new Date(job.createdAt) : new Date()
+  const date = createdAtDate.toISOString().split('T')[0]
+  const createdAt = createdAtDate.toLocaleString('ja-JP')
+  const templateName = job.template?.displayName || job.template?.fileName || ''
+  const completedAtDate = job.completedAt ? new Date(job.completedAt) : null
+  const completedAt = completedAtDate ? completedAtDate.toLocaleString('ja-JP') : ''
 
   return {
     id: job.id,
     name: job.title || '',
     date,
+    createdAt,
+    templateName,
+    completedAt,
     files: totalFiles,
     uploadedFiles,
     fieldMappings,
@@ -339,12 +354,20 @@ export default function TopPage() {
             </CardHeader>
             <CardContent>
               {selectedJobData ? (
-                <div className="space-y-4">
-                  <div className="rounded-md border p-4">
-                    <h3 className="font-semibold mb-3">ジョブ詳細</h3>
-                    <div className="space-y-3 text-sm">
+                <ScrollArea className="h-[400px]">
+                  <div className="space-y-4 p-4">
+                    <div className="rounded-md border p-4">
+                      <h3 className="font-semibold mb-3">ジョブ詳細</h3>
+                      <div className="space-y-3 text-sm">
+                        <div>
+                        <span className="font-medium">ジョブ名:</span> {selectedJobData.name}
+                      </div>
+
                       <div>
-                        <span className="font-medium">ジョブID:</span> {selectedJobData.id}
+                        <span className="font-medium">テンプレート:</span>{" "}
+                        <span className="text-muted-foreground">
+                          {selectedJobData.templateName || "未選択"}
+                        </span>
                       </div>
 
                       <div>
@@ -387,15 +410,24 @@ export default function TopPage() {
                         <div>
                           <span className="font-medium">項目紐づけ:</span>
                           <ul className="list-disc list-inside ml-4 mt-1 text-muted-foreground">
-                            {selectedJobData.fieldMappings.slice(0, 3).map((mapping, idx) => (
-                              <li key={idx}>
-                                {mapping.fieldName} ({mapping.fileIds.length}件)
-                                {mapping.note && ` - ${mapping.note}`}
-                              </li>
-                            ))}
-                            {selectedJobData.fieldMappings.length > 3 && (
-                              <li>他 {selectedJobData.fieldMappings.length - 3}件</li>
-                            )}
+                            {selectedJobData.fieldMappings.map((mapping, idx) => {
+                              const label = mapping.fieldName || mapping.fieldId || "未定義の項目"
+                              const fileNames =
+                                (mapping.fileNames && mapping.fileNames.length > 0
+                                  ? mapping.fileNames
+                                  : mapping.fileIds) || []
+                              const fileLabel = fileNames.length > 0 ? fileNames.join("、") : "ファイル未割当"
+
+                              return (
+                                <li key={idx}>
+                                  <span className="font-semibold">{label}:</span>{" "}
+                                  <span className="text-muted-foreground">{fileLabel}</span>
+                                  {mapping.note && (
+                                    <span className="text-muted-foreground"> - {mapping.note}</span>
+                                  )}
+                                </li>
+                              )
+                            })}
                           </ul>
                         </div>
                       )}
@@ -403,13 +435,13 @@ export default function TopPage() {
                       <div>
                         <span className="font-medium">実行予約:</span>
                         <div className="ml-4 mt-1 text-muted-foreground">
-                          <p>予定日時: {selectedJobData.reservationSettings.scheduledDate}</p>
-                          <p>優先度: {selectedJobData.reservationSettings.priority}</p>
+                          <p>完了日時: {selectedJobData.completedAt || "未完了"}</p>
                         </div>
                       </div>
                     </div>
                   </div>
                 </div>
+                </ScrollArea>
               ) : (
                 <div className="flex items-center justify-center h-[400px] text-muted-foreground">
                   ジョブを選択してください
