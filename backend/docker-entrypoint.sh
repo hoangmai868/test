@@ -9,7 +9,7 @@ until npx prisma migrate deploy; do
 done
 
 echo "Seeding database..."
-npx prisma db seed
+# npx prisma db seed
 
 exec npm run start
 

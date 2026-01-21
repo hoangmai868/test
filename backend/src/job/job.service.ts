@@ -32,6 +32,11 @@ interface DocumentContent {
   assistantFileId: string;
 }
 
+interface OpenAiRequestOptions {
+  timeout?: number;
+  signal?: AbortSignal | null;
+}
+
 interface AssistantFileReference {
   fileId: string;
   fileName?: string;
@@ -57,6 +62,9 @@ export class JobService {
   private readonly openAiApiKey: string | null;
   private readonly azureOpenAiConfig: AzureOpenAiConfig | null;
   private readonly jobFieldBatchSize: number;
+  private readonly openAiRequestTimeoutMs: number;
+  private readonly openAiRequestRetryDelayMs: number;
+  private readonly openAiRequestMaxAttempts: number;
 
   constructor(
     private prisma: PrismaService,
@@ -79,6 +87,17 @@ export class JobService {
     const parsedBatchSize = Number(process.env.JOB_FIELD_BATCH_SIZE);
     this.jobFieldBatchSize =
       Number.isFinite(parsedBatchSize) && parsedBatchSize >= 1 ? parsedBatchSize : 5;
+    const parsedTimeout = Number(process.env.OPENAI_REQUEST_TIMEOUT_MS);
+    this.openAiRequestTimeoutMs =
+      Number.isFinite(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : 180_000;
+    const parsedRetryDelay = Number(process.env.OPENAI_REQUEST_RETRY_DELAY_MS);
+    this.openAiRequestRetryDelayMs =
+      Number.isFinite(parsedRetryDelay) && parsedRetryDelay >= 0 ? parsedRetryDelay : 10_000;
+    const parsedMaxAttempts = Number(process.env.OPENAI_REQUEST_MAX_ATTEMPTS);
+    this.openAiRequestMaxAttempts =
+      Number.isFinite(parsedMaxAttempts) && parsedMaxAttempts >= 1
+        ? Math.floor(parsedMaxAttempts)
+        : 3;
   }
 
   async create(createJobDto: CreateJobDto) {
@@ -284,7 +303,7 @@ export class JobService {
     const hasAiClient = Boolean(this.azureOpenAiConfig || this.openAiApiKey);
     const instructionText = this.buildInstructionText(promptText, note);
     const resultText = hasAiClient
-      ? await this.callOpenAi(systemPrompt, instructionText, documents)
+      ? await this.callOpenAiWithRetry(systemPrompt, instructionText, documents)
       : this.buildFallbackResponse(promptText, documents);
 
     return {
@@ -668,9 +687,10 @@ export class JobService {
     systemPrompt: string,
     instructionText: string,
     documents: DocumentContent[],
+    requestOptions?: OpenAiRequestOptions,
   ): Promise<string> {
     if (documents.length === 0) {
-      return this.requestOpenAiWithText(systemPrompt, instructionText);
+      return this.requestOpenAiWithText(systemPrompt, instructionText, requestOptions);
     }
 
     console.log(`Calling OpenAI with ${documents.length} documents`);
@@ -680,12 +700,47 @@ export class JobService {
       fileName: doc.fileName,
     }));
 
-    return this.processByFileId(fileInputs, instructionText, { systemPrompt });
+    return this.processByFileId(fileInputs, instructionText, { systemPrompt }, requestOptions);
+  }
+
+  private async callOpenAiWithRetry(
+    systemPrompt: string,
+    instructionText: string,
+    documents: DocumentContent[],
+  ): Promise<string> {
+    let lastError: unknown;
+
+    for (let attempt = 1; attempt <= this.openAiRequestMaxAttempts; attempt++) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.openAiRequestTimeoutMs);
+
+      try {
+        return await this.callOpenAi(systemPrompt, instructionText, documents, {
+          timeout: this.openAiRequestTimeoutMs,
+          signal: controller.signal,
+        });
+      } catch (error) {
+        lastError = error;
+        if (attempt >= this.openAiRequestMaxAttempts) {
+          throw error;
+        }
+        console.warn(
+          `OpenAI request failed (attempt ${attempt}/${this.openAiRequestMaxAttempts}); retrying in ${this.openAiRequestRetryDelayMs}ms`,
+          error,
+        );
+        await this.delay(this.openAiRequestRetryDelayMs);
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }
+
+    throw lastError ?? new Error('OpenAI request failed');
   }
 
   private async requestOpenAiWithText(
     systemPrompt: string,
     instructionText: string,
+    requestOptions?: OpenAiRequestOptions,
   ): Promise<string> {
     const client = this.getOpenAiClient();
     const model = this.azureOpenAiConfig ? this.azureOpenAiConfig.deployment : 'gpt-5';
@@ -715,11 +770,14 @@ export class JobService {
 
     console.log(`Requesting OpenAI with text prompt`, payload);
 
-    const response = await client.responses.create({
-      model,
-      input: payload,
-      temperature: 0.2,
-    });
+    const response = await client.responses.create(
+      {
+        model,
+        input: payload,
+        temperature: 0.2,
+      },
+      requestOptions,
+    );
 
     return this.extractResponseText(response);
   }
@@ -732,6 +790,7 @@ export class JobService {
       client?: OpenAI;
       systemPrompt?: string;
     } = {},
+    requestOptions?: OpenAiRequestOptions,
   ): Promise<string> {
     const references = Array.isArray(fileInputs)
       ? fileInputs.filter((input): input is AssistantFileReference => Boolean(input?.fileId))
@@ -782,11 +841,14 @@ export class JobService {
       content: userContent,
     });
 
-    const response = await client.responses.create({
-      model,
-      input: payload,
-      temperature: 0.2,
-    });
+    const response = await client.responses.create(
+      {
+        model,
+        input: payload,
+        temperature: 0.2,
+      },
+      requestOptions,
+    );
 
     if (typeof response?.output_text === 'string' && response.output_text.trim()) {
       return response.output_text.trim();
@@ -822,11 +884,15 @@ export class JobService {
       .join('\n')
       .trim();
 
-    if (!text) {
-      throw new BadRequestException('AIからの応答を取得できませんでした');
-    }
+    // if (!text) {
+    //   throw new BadRequestException('AIからの応答を取得できませんでした');
+    // }
 
     return text;
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   async copyJob(jobId: string) {
