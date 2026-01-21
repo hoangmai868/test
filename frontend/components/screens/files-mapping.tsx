@@ -420,6 +420,52 @@ export default function FilesMapping({
     router.push("/")
   }
 
+  // Combine loaded files (from API) with newly uploaded files
+  const getCombinedFiles = (category: "customerInfo" | "contractDocs" | "registryDocs"): DisplayFile[] => {
+    const loadedFiles: DisplayFile[] =
+      loadedFileInfo?.[category]?.map((file) => ({
+        identifier: file.fileKey || file.name,
+        name: file.name,
+        fileKey: file.fileKey,
+        isLoaded: true,
+      })) || []
+
+    const uploadedFilesList: DisplayFile[] = uploadedFiles[category].map((file, index) => ({
+      identifier: `${category}-uploaded-${index}-${file.name}`,
+      name: file.name,
+      isLoaded: false,
+    }))
+
+    return [...loadedFiles, ...uploadedFilesList]
+  }
+
+  const fileCategories = [
+    {
+      category: "顧客情報",
+      files: getCombinedFiles("customerInfo"),
+    },
+    {
+      category: "契約書類等",
+      files: getCombinedFiles("contractDocs"),
+    },
+    {
+      category: "登記簿謄本",
+      files: getCombinedFiles("registryDocs"),
+    },
+  ].filter((category) => category.files.length > 0)
+
+  const fileDisplayNameLookup = useMemo(() => {
+    const lookup: Record<string, string> = {}
+    fileCategories.forEach((category) => {
+      category.files.forEach((file) => {
+        if (file.identifier) {
+          lookup[file.identifier] = file.name
+        }
+      })
+    })
+    return lookup
+  }, [fileCategories])
+
   const handleSaveJob = useCallback(
     async (showAlert = true) => {
     if (!user || !jobName.trim()) {
@@ -505,12 +551,16 @@ export default function FilesMapping({
             fieldMappings.find((m) => m.fieldId === fieldId) ||
             fieldMappings.find((m) => m.fieldId === legacyFieldName)
 
-          // Extract fileNames and fileKeys from fileIds
-          const fileNames: string[] = []
+          const fileNames: string[] = Array.from(
+            new Set(
+              mapping?.fileIds
+                .map((fileId) => fileDisplayNameLookup[fileId] ?? fileId)
+                .filter((value): value is string => Boolean(value)),
+            ),
+          )
           const fileKeys: string[] = []
 
           mapping?.fileIds.forEach((fileId) => {
-            fileNames.push(fileId)
             const fileKey = fileKeyMap[fileId]
             if (fileKey) {
               fileKeys.push(fileKey)
@@ -668,6 +718,7 @@ export default function FilesMapping({
     fieldMappings,
     effectivePrompts,
     jobId,
+      fileDisplayNameLookup,
     setFieldMappings,
     setMappings,
     setInstructions,
@@ -689,52 +740,6 @@ export default function FilesMapping({
       unregister()
     }
   }, [handleSaveJob, jobId, registerStepSaveHandler])
-
-// Combine loaded files (from API) with newly uploaded files
-const getCombinedFiles = (category: "customerInfo" | "contractDocs" | "registryDocs"): DisplayFile[] => {
-  const loadedFiles: DisplayFile[] =
-    loadedFileInfo?.[category]?.map((file) => ({
-      identifier: file.fileKey || file.name,
-      name: file.name,
-      fileKey: file.fileKey,
-      isLoaded: true,
-    })) || []
-
-  const uploadedFilesList: DisplayFile[] = uploadedFiles[category].map((file, index) => ({
-    identifier: `${category}-uploaded-${index}-${file.name}`,
-    name: file.name,
-    isLoaded: false,
-  }))
-
-  return [...loadedFiles, ...uploadedFilesList]
-}
-
-const fileCategories = [
-  {
-    category: "顧客情報",
-    files: getCombinedFiles("customerInfo"),
-  },
-  {
-    category: "契約書類等",
-    files: getCombinedFiles("contractDocs"),
-  },
-  {
-    category: "登記簿謄本",
-    files: getCombinedFiles("registryDocs"),
-  },
-].filter((category) => category.files.length > 0)
-
-  const fileDisplayNameLookup = useMemo(() => {
-    const lookup: Record<string, string> = {}
-    fileCategories.forEach((category) => {
-      category.files.forEach((file) => {
-        if (file.identifier) {
-          lookup[file.identifier] = file.name
-        }
-      })
-    })
-    return lookup
-  }, [fileCategories])
 
   const renderFieldRows = (): JSX.Element[] => {
     const rows: JSX.Element[] = []

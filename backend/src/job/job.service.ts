@@ -254,32 +254,30 @@ export class JobService {
   async runPrompt(jobId: string, runPromptDto: RunPromptDto): Promise<PromptResult> {
     const job = await this.findOne(jobId);
     console.log(`Fetched job ${runPromptDto} for prompt run`);
-    const files = runPromptDto.fileKeys;
-    if (!files) {
-      throw new NotFoundException(`フィールド ${runPromptDto.fieldName} が見つかりません`);
-    }
-
-    console.log(`Running prompt for job ${jobId}, field ${runPromptDto.fileKeys}`);
     const providedFileKeys =
       (runPromptDto.fileKeys || [])
         .map((key) => key.replace(/^\//, ''))
         .filter(Boolean);
-
-    // return {
-    //   fieldName: runPromptDto.fieldName,
-    //   prompt: runPromptDto.prompt?.trim(),
-    //   note: (runPromptDto.note?.trim() || '').trim(),
-    //   files: providedFileKeys,
-    //   result: "",
-    // };
-
-    const documents = await this.prepareDocuments(providedFileKeys, job.files);
-    const promptText = runPromptDto.prompt.trim();
+    const promptText = (runPromptDto.prompt?.trim() || '').trim();
     if (!promptText) {
       throw new BadRequestException('プロンプトを入力してください');
     }
 
     const note = (runPromptDto.note?.trim() || '').trim();
+    if (providedFileKeys.length === 0) {
+      const fieldName = runPromptDto.fieldName || 'unknown';
+      const message = `フィールド ${fieldName} が見つかりません`;
+      return {
+        fieldName: runPromptDto.fieldName,
+        prompt: promptText,
+        note,
+        files: [],
+        result: message,
+      };
+    }
+
+    console.log(`Running prompt for job ${jobId}, field ${providedFileKeys}`);
+    const documents = await this.prepareDocuments(providedFileKeys, job.files);
     const systemPrompt =
       job.template?.systemPrompt || 'You are a helpful legal assistant that summarizes PDF content accurately.';
 
@@ -455,6 +453,46 @@ export class JobService {
     }
 
     return value.filter((item): item is string => typeof item === 'string' && item.trim() !== '');
+  }
+
+  private buildCopiedTemplateJson(
+    templateJson: unknown,
+    fileKeyMap: Map<string, string>,
+  ): TemplateJsonGroup[] {
+    const groups = this.normalizeTemplateJson(templateJson);
+    if (groups.length === 0) {
+      return [];
+    }
+
+    return groups.map((group) => ({
+      groupName: group.groupName,
+      fields: group.fields.map((field) => ({
+        ...field,
+        fileKeys: this.remapFieldFileKeys(field.fileKeys, fileKeyMap),
+        extractedValue: '',
+      })),
+    }));
+  }
+
+  private remapFieldFileKeys(
+    fileKeys: string[] | undefined,
+    fileKeyMap: Map<string, string>,
+  ): string[] {
+    if (!Array.isArray(fileKeys) || fileKeys.length === 0) {
+      return [];
+    }
+
+    return fileKeys
+      .map((key) => {
+        if (!key) {
+          return '';
+        }
+
+        const normalizedKey = key.replace(/^\//, '');
+        const mappedKey = fileKeyMap.get(normalizedKey);
+        return mappedKey ? `/${mappedKey}` : key;
+      })
+      .filter((mappedKey): mappedKey is string => mappedKey.trim().length > 0);
   }
 
   private collectFileKeys(field: TemplateJsonField, jobFiles: JobFile[]): string[] {
@@ -810,11 +848,13 @@ export class JobService {
     });
 
     const copiedBlobNames: string[] = [];
+    const fileKeyMap = new Map<string, string>();
     interface JobCopyResult {
       fileName: string;
       destinationBlobName: string;
       category: JobFileCategory;
       assistantFileId: string | null;
+      sourceFileKey: string | null;
     }
 
     const newJobFiles: {
@@ -841,11 +881,12 @@ export class JobService {
             destinationBlobName,
           );
 
-        return {
+          return {
             fileName,
             destinationBlobName,
             category: file.category,
-          assistantFileId: file.assistantFileId ?? null,
+            assistantFileId: file.assistantFileId ?? null,
+            sourceFileKey: file.fileKey ?? null,
           };
         }),
       );
@@ -864,11 +905,32 @@ export class JobService {
           assistantFileId: result.assistantFileId ?? null,
           category: result.category,
         });
+
+        if (result.sourceFileKey) {
+          const normalizedSource = result.sourceFileKey.replace(/^\//, '');
+          if (normalizedSource) {
+            fileKeyMap.set(normalizedSource, result.destinationBlobName);
+          }
+        }
       });
 
       if (newJobFiles.length > 0) {
         await this.prisma.jobFile.createMany({
           data: newJobFiles,
+        });
+      }
+
+      const updatedTemplateGroups = this.buildCopiedTemplateJson(
+        existingJob.templateJson,
+        fileKeyMap,
+      );
+      if (updatedTemplateGroups.length > 0) {
+        await this.prisma.job.update({
+          where: { id: newJob.id },
+        data: {
+          templateJson:
+            updatedTemplateGroups as unknown as Prisma.InputJsonValue,
+        },
         });
       }
 
