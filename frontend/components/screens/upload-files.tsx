@@ -301,7 +301,7 @@ export default function UploadFiles({ onNext }: UploadFilesProps) {
             <FileCard title="登記簿謄本" category="registryDocs" inputRef={registryDocsRef} />
           </div>
           <div className="flex flex-col gap-y-4">
-            <Card className="h-fit sticky top-6">
+            <Card className="h-fit top-6">
               <CardHeader>
                 <CardTitle>アップロード済みファイル一覧</CardTitle>
               </CardHeader>
