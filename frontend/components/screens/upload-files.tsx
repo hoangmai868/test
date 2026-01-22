@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Upload, Trash2, Home, ChevronRight, Loader2 } from "lucide-react"
 import { useUploadContext } from "@/contexts/upload-context"
 import { api } from "@/lib/api"
+import ConfirmDeleteFileModal from "@/components/modals/confirm-delete-file-modal"
 
 type CategoryKey = "customerInfo" | "contractDocs" | "registryDocs"
 const CATEGORY_SECTIONS: { key: CategoryKey; title: string }[] = [
@@ -54,6 +55,7 @@ export default function UploadFiles({ onNext }: UploadFilesProps) {
     registryDocs: false,
   })
   const [jobNameError, setJobNameError] = useState<string>("")
+  const [pendingDelete, setPendingDelete] = useState<{ category: CategoryKey; fileName: string } | null>(null)
 
   const customerInfoRef = useRef<HTMLInputElement>(null)
   const contractDocsRef = useRef<HTMLInputElement>(null)
@@ -89,6 +91,18 @@ export default function UploadFiles({ onNext }: UploadFilesProps) {
         [category]: prev[category].filter((f) => f.name !== fileName),
       }))
     }
+  }
+
+  const handleDeleteModalClose = () => {
+    setPendingDelete(null)
+  }
+
+  const handleDeleteModalConfirm = () => {
+    if (!pendingDelete) {
+      return
+    }
+    handleUploadedFileDelete(pendingDelete.category, pendingDelete.fileName)
+    setPendingDelete(null)
   }
 
   const handleDragEnter = (category: "customerInfo" | "contractDocs" | "registryDocs", e: React.DragEvent) => {
@@ -319,7 +333,12 @@ export default function UploadFiles({ onNext }: UploadFilesProps) {
                                       variant="ghost"
                                       size="icon"
                                       className="h-7 w-7 shrink-0 hover:bg-red-50"
-                                      onClick={() => handleUploadedFileDelete(key, file.name)}
+                                      onClick={() =>
+                                        setPendingDelete({
+                                          category: key,
+                                          fileName: file.name,
+                                        })
+                                      }
                                       title="ファイルを削除"
                                     >
                                       <Trash2 className="h-4 w-4 text-red-500" />
@@ -362,6 +381,16 @@ export default function UploadFiles({ onNext }: UploadFilesProps) {
             </div>
           </div>
         </div>
+        <ConfirmDeleteFileModal
+          open={Boolean(pendingDelete)}
+          onOpenChange={(open) => {
+            if (!open) {
+              handleDeleteModalClose()
+            }
+          }}
+          fileName={pendingDelete?.fileName}
+          onConfirm={handleDeleteModalConfirm}
+        />
       </div>
     </div>
   )
