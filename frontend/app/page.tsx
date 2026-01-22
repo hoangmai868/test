@@ -181,7 +181,7 @@ export default function TopPage() {
     }
 
     fetchJobs()
-  }, [user?.id])
+  }, [user?.id, activeJobTab])
 
   const getJobsByStatus = (status: JobStatus) => {
     return jobs[status]

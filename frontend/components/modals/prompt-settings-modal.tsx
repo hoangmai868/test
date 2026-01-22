@@ -1,13 +1,13 @@
 "use client"
 
-import { Fragment } from "react"
+import { Fragment, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Loader2 } from "lucide-react"
+import { Loader2, CircleQuestionMark } from "lucide-react"
 import { Textarea } from "@/components/ui/textarea"
 import { buildFieldIdentifier } from "@/lib/field-identifier"
-
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip"
 interface PromptField {
   name: string
   prompt?: string
@@ -59,6 +59,11 @@ export default function PromptSettingsModal({
   handlePromptRegister,
   fileNameLookup,
 }: PromptSettingsModalProps) {
+  const [isPromptTooltipHovered, setIsPromptTooltipHovered] = useState(false)
+
+  const showPromptTooltip = () => setIsPromptTooltipHovered(true)
+  const hidePromptTooltip = () => setIsPromptTooltipHovered(false)
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="!w-[90vw] !max-w-none max-h-[90vh] flex flex-col">
@@ -89,7 +94,29 @@ export default function PromptSettingsModal({
                     訴状の項目
                   </th>
                   <th className="text-left p-3 font-semibold text-sm bg-slate-50 sticky top-0 z-10 col-instruction">
-                    プロンプト
+                    <div className="flex items-center gap-1">
+                      <span>プロンプト</span>
+                      <Tooltip open={isPromptTooltipHovered}>
+                        <TooltipTrigger asChild>
+                          <Button
+                            size={"sm"}
+                            variant="ghost"
+                            onPointerEnter={showPromptTooltip}
+                            onPointerLeave={hidePromptTooltip}
+                          >
+                            <CircleQuestionMark />
+                          </Button>
+                        </TooltipTrigger>
+
+                        <TooltipContent
+                          side="right"
+                          onPointerEnter={showPromptTooltip}
+                          onPointerLeave={hidePromptTooltip}
+                        >
+                          {"{{登録ファイル}} / {{追加コメント}} を使って、使用するファイルやコメントを指定できます。"}
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
                   </th>
                   <th className="text-center p-3 font-semibold text-sm bg-slate-50 sticky top-0 z-10 col-checkbox">
                     出力結果
