@@ -83,6 +83,7 @@ interface UploadContextType {
   setPromptEntries: React.Dispatch<React.SetStateAction<Record<string, string>>>
   editedPrompts: Record<string, string>
   setEditedPrompts: React.Dispatch<React.SetStateAction<Record<string, string>>>
+  isUploadingFiles: boolean
 }
 
 const UploadContext = createContext<UploadContextType | undefined>(undefined)
@@ -125,6 +126,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     contractDocs: new Set(),
     registryDocs: new Set(),
   })
+  const [isUploadingFiles, setIsUploadingFiles] = useState(false)
   const stepSaveHandlersRef = useRef<Map<number, () => Promise<string | null>>>(new Map())
 
   const registerStepSaveHandler = useCallback(
@@ -293,6 +295,15 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         return null
       }
 
+      const hasPendingUploads =
+        uploadedFiles.customerInfo.length > 0 ||
+        uploadedFiles.contractDocs.length > 0 ||
+        uploadedFiles.registryDocs.length > 0
+
+      if (hasPendingUploads) {
+        setIsUploadingFiles(true)
+      }
+
       try {
         let templateIdToUse = templateId
         if (!templateIdToUse) {
@@ -446,6 +457,10 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         console.error("Auto-save job failed:", err)
         return null
+      } finally {
+        if (hasPendingUploads) {
+          setIsUploadingFiles(false)
+        }
       }
     },
     [
@@ -460,6 +475,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       setUploadedFiles,
       setLoadedFileInfo,
       setDeletedFiles,
+      setIsUploadingFiles,
     ],
   )
 
@@ -505,6 +521,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
       canAccessStep,
       loadJobData,
       isLoadingJob,
+      isUploadingFiles,
       resetContext,
       deletedFiles,
       setDeletedFiles,

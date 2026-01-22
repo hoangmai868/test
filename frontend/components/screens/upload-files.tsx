@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Upload, Trash2, Home, ChevronRight } from "lucide-react"
+import { Upload, Trash2, Home, ChevronRight, Loader2 } from "lucide-react"
 import { useUploadContext } from "@/contexts/upload-context"
 import { api } from "@/lib/api"
 
@@ -41,6 +41,7 @@ export default function UploadFiles({ onNext }: UploadFilesProps) {
     deletedFiles,
     setDeletedFiles,
     autoSaveJob,
+    isUploadingFiles,
   } = useUploadContext()
 
   const [dragStates, setDragStates] = useState<{
@@ -222,7 +223,13 @@ export default function UploadFiles({ onNext }: UploadFilesProps) {
 
   return (
     <div className="bg-slate-50 p-4 sm:p-6">
-      <div className="container mx-auto space-y-6">
+      <div className="container mx-auto space-y-6 relative">
+        {isUploadingFiles && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-xl bg-white/80 backdrop-blur">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <p className="text-sm font-medium text-slate-600">ファイルをアップロードしています...</p>
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-bold">データ取込</h1>
           <Button variant="outline" size="sm" onClick={() => router.push("/")}>
@@ -346,7 +353,7 @@ export default function UploadFiles({ onNext }: UploadFilesProps) {
                   const draftId = await autoSaveJob()
                   onNext(draftId)
                 }}
-                disabled={!canAccessStep(2)}
+                disabled={!canAccessStep(2) || isUploadingFiles}
                 className="w-full sm:w-auto"
               >
                 次へ
