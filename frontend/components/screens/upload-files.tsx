@@ -54,6 +54,11 @@ export default function UploadFiles({ onNext }: UploadFilesProps) {
     contractDocs: false,
     registryDocs: false,
   })
+  const dragCounterRef = useRef<Record<CategoryKey, number>>({
+    customerInfo: 0,
+    contractDocs: 0,
+    registryDocs: 0,
+  })
   const [jobNameError, setJobNameError] = useState<string>("")
   const [pendingDelete, setPendingDelete] = useState<{ category: CategoryKey; fileName: string } | null>(null)
 
@@ -105,26 +110,35 @@ export default function UploadFiles({ onNext }: UploadFilesProps) {
     setPendingDelete(null)
   }
 
-  const handleDragEnter = (category: "customerInfo" | "contractDocs" | "registryDocs", e: React.DragEvent) => {
+  const handleDragEnter = (category: CategoryKey, e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    setDragStates((prev) => ({ ...prev, [category]: true }))
+    dragCounterRef.current[category] = (dragCounterRef.current[category] ?? 0) + 1
+    if (dragCounterRef.current[category] === 1) {
+      setDragStates((prev) => ({ ...prev, [category]: true }))
+    }
   }
 
-  const handleDragLeave = (category: "customerInfo" | "contractDocs" | "registryDocs", e: React.DragEvent) => {
+  const handleDragLeave = (category: CategoryKey, e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    setDragStates((prev) => ({ ...prev, [category]: false }))
+    dragCounterRef.current[category] =
+      Math.max((dragCounterRef.current[category] ?? 1) - 1, 0)
+    if (dragCounterRef.current[category] === 0) {
+      setDragStates((prev) => ({ ...prev, [category]: false }))
+    }
   }
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
+    e.dataTransfer.dropEffect = "copy"
   }
 
-  const handleDrop = (category: "customerInfo" | "contractDocs" | "registryDocs", e: React.DragEvent) => {
+  const handleDrop = (category: CategoryKey, e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
+    dragCounterRef.current[category] = 0
     setDragStates((prev) => ({ ...prev, [category]: false }))
 
     const files = e.dataTransfer.files
