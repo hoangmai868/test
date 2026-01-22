@@ -272,39 +272,48 @@ export class JobService {
 
   async runPrompt(jobId: string, runPromptDto: RunPromptDto): Promise<PromptResult> {
     const job = await this.findOne(jobId);
-    console.log(`Fetched job ${runPromptDto} for prompt run`);
+
+    const promptText = (runPromptDto.prompt || '').trim();
+    const note = (runPromptDto.note || '').trim();
+
+    if (!promptText) {
+      return {
+        fieldName: runPromptDto.fieldName,
+        prompt: '',
+        note,
+        files: [],
+        result: '',
+      };
+    }
+
     const providedFileKeys =
       (runPromptDto.fileKeys || [])
         .map((key) => key.replace(/^\//, ''))
         .filter(Boolean);
-    const promptText = (runPromptDto.prompt?.trim() || '').trim();
-    if (!promptText) {
-      throw new BadRequestException('プロンプトを入力してください');
+
+    let documents: DocumentContent[] = [];
+    if (providedFileKeys.length > 0) {
+      documents = await this.prepareDocuments(providedFileKeys, job.files);
     }
 
-    const note = (runPromptDto.note?.trim() || '').trim();
-    if (providedFileKeys.length === 0) {
-      const fieldName = runPromptDto.fieldName || 'unknown';
-      const message = `フィールド ${fieldName} が見つかりません`;
-      return {
-        fieldName: runPromptDto.fieldName,
-        prompt: promptText,
-        note,
-        files: [],
-        result: message,
-      };
-    }
-
-    console.log(`Running prompt for job ${jobId}, field ${providedFileKeys}`);
-    const documents = await this.prepareDocuments(providedFileKeys, job.files);
     const systemPrompt =
-      job.template?.systemPrompt || 'You are a helpful legal assistant that summarizes PDF content accurately.';
+      job.template?.systemPrompt ||
+      'You are a helpful legal assistant that summarizes PDF content accurately.';
 
     const hasAiClient = Boolean(this.azureOpenAiConfig || this.openAiApiKey);
-    const instructionText = this.buildInstructionText(promptText, note);
-    const resultText = hasAiClient
-      ? await this.callOpenAiWithRetry(systemPrompt, instructionText, documents)
-      : this.buildFallbackResponse(promptText, documents);
+
+    let resultText = '';
+
+    if (hasAiClient) {
+      const instructionText = this.buildInstructionText(promptText, note);
+      resultText = await this.callOpenAiWithRetry(
+        systemPrompt,
+        instructionText,
+        documents,
+      );
+    } else {
+      resultText = this.buildFallbackResponse(promptText, documents);
+    }
 
     return {
       fieldName: runPromptDto.fieldName,
@@ -314,6 +323,7 @@ export class JobService {
       result: resultText,
     };
   }
+
 
   async startJobRun(jobId: string): Promise<void> {
     const job = await this.findOne(jobId);

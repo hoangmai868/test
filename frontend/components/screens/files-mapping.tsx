@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation"
 import { Settings, ChevronLeft, ChevronRight, Loader2, Home } from "lucide-react"
 import type React from "react"
 
-import { useState, Fragment, useEffect, useMemo, useCallback } from "react"
+import { useState, Fragment, useEffect, useMemo, useCallback, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -71,12 +71,10 @@ const truncateFileName = (fileName: string): string => {
   return fileName.length > 15 ? fileName.substring(0, 12) + "..." : fileName
 }
 
+const MIN_GENERATING_DURATION_MS = 400
+
 // Helper function to map template fileName to legacy identifiers
 const mapTemplateToIdentifier = (fileName: string | null): string => {
-  if (fileName === "評価内容") return "typeA"
-  if (fileName === "Type B") return "typeB"
-  if (fileName === "Type C") return "typeC"
-  // Fallback: use fileName as identifier or generate one
   return fileName || "unknown"
 }
 
@@ -133,6 +131,7 @@ export default function FilesMapping({
   const [isPromptModalOpen, setIsPromptModalOpen] = useState(false)
   const [outputs, setOutputs] = useState<Record<string, string>>({})
   const [generatingStates, setGeneratingStates] = useState<Record<string, boolean>>({})
+  const loadingStartTimesRef = useRef<Record<string, number>>({})
   const [templateFieldGroups, setTemplateFieldGroups] = useState<Record<string, FieldGroup[]>>({})
   const templatePrompts = useMemo(
     () => buildPromptsFromFieldGroups(templateFieldGroups[selectedTemplate] || []),
@@ -196,6 +195,7 @@ export default function FilesMapping({
   const currentFieldGroups: FieldGroup[] = templateFieldGroups[selectedTemplate] || []
   const selectedTemplateDisplayName =
     templates.find((template) => mapTemplateToIdentifier(template.fileName) === selectedTemplate)?.displayName ?? "テンプレート"
+  const activeTemplateKey = selectedTemplate || "default-template"
 
   const [mappings, setMappings] = useState<Record<string, Record<string, boolean>>>(() => {
     const initialMappings: Record<string, Record<string, boolean>> = {}
@@ -314,71 +314,87 @@ export default function FilesMapping({
     setEditedPrompts((prev) => ({ ...prev, [fieldId]: value }))
   }
 
+  const startGenerating = (fieldId: string) => {
+    loadingStartTimesRef.current[fieldId] = Date.now()
+    setGeneratingStates((prev) => ({ ...prev, [fieldId]: true }))
+  }
+
+  const stopGenerating = async (fieldId: string) => {
+    const startTime = loadingStartTimesRef.current[fieldId]
+    delete loadingStartTimesRef.current[fieldId]
+    const elapsed = startTime ? Date.now() - startTime : 0
+    const remaining = Math.max(0, MIN_GENERATING_DURATION_MS - elapsed)
+    if (remaining > 0) {
+      await new Promise((resolve) => setTimeout(resolve, remaining))
+    }
+    setGeneratingStates((prev) => ({ ...prev, [fieldId]: false }))
+  }
+
   const handleGenerate = async (fieldId: string) => {
     const legacyName = getFieldNameFromIdentifier(fieldId)
-    setGeneratingStates((prev) => ({ ...prev, [fieldId]: true }))
+    startGenerating(fieldId)
     setOutputs((prev) => ({ ...prev, [fieldId]: "" }))
 
-    if (!jobId) {
-      setOutputs((prev) => ({
-        ...prev,
-        [fieldId]: "ジョブを一時保存してから生成してください。",
-      }))
-      setGeneratingStates((prev) => ({ ...prev, [fieldId]: false }))
-      return
-    }
-
-    const promptValue =
-      effectivePrompts[fieldId] || effectivePrompts[legacyName] || ""
-    const mapping =
-      fieldMappings.find((mapping) => mapping.fieldId === fieldId) ||
-      fieldMappings.find((mapping) => mapping.fieldId === legacyName)
-    const noteValue =
-      instructions[fieldId] || instructions[legacyName] || mapping?.note
-
-    if (!mapping || mapping.fileIds.length === 0) {
-      setOutputs((prev) => ({
-        ...prev,
-        [fieldId]: "ファイルを選択してください。",
-      }))
-      setGeneratingStates((prev) => ({ ...prev, [fieldId]: false }))
-      return
-    }
-
-    const missingKeys = mapping.fileIds.filter((fileId) => !fileKeyLookup[fileId])
-    if (missingKeys.length > 0) {
-      setOutputs((prev) => ({
-        ...prev,
-        [fieldId]: "選択したファイルのキーが利用できません。ジョブを保存してから再試行してください。",
-      }))
-      setGeneratingStates((prev) => ({ ...prev, [fieldId]: false }))
-      return
-    }
-
-    const fileKeys = Array.from(
-      new Set(
-        mapping.fileIds
-          .map((fileId) => fileKeyLookup[fileId])
-          .filter((key): key is string => Boolean(key)),
-      ),
-    )
-
     try {
-      const result = await api.runPrompt({
-        jobId,
-        fieldName: fieldId,
-        prompt: promptValue,
-        note: noteValue,
-        fileKeys,
-      })
-      setOutputs((prev) => ({ ...prev, [fieldId]: result.result }))
-    } catch (error) {
-      setOutputs((prev) => ({
-        ...prev,
-        [fieldId]: error instanceof Error ? error.message : "生成に失敗しました",
-      }))
+      if (!jobId) {
+        setOutputs((prev) => ({
+          ...prev,
+          [fieldId]: "ジョブを一時保存してから生成してください。",
+        }))
+        return
+      }
+
+      const promptValue =
+        effectivePrompts[fieldId] || effectivePrompts[legacyName] || ""
+      const mapping =
+        fieldMappings.find((mapping) => mapping.fieldId === fieldId) ||
+        fieldMappings.find((mapping) => mapping.fieldId === legacyName)
+      const noteValue =
+        instructions[fieldId] || instructions[legacyName] || mapping?.note
+
+      if (!promptValue) {
+        setOutputs((prev) => ({
+          ...prev,
+          [fieldId]: "",
+        }))
+        return
+      }
+
+      const mappedFileIds = mapping?.fileIds || []
+      const missingKeys = mapping ? mappedFileIds.filter((fileId) => !fileKeyLookup[fileId]) : []
+      if (missingKeys?.length > 0) {
+        setOutputs((prev) => ({
+          ...prev,
+          [fieldId]: "選択したファイルのキーが利用できません。ジョブを保存してから再試行してください。",
+        }))
+        return
+      }
+
+      const fileKeys = Array.from(
+        new Set(
+          mappedFileIds
+            .map((fileId) => fileKeyLookup[fileId])
+            .filter((key): key is string => Boolean(key)),
+        ),
+      )
+
+      try {
+        const result = await api.runPrompt({
+          jobId,
+          fieldName: fieldId,
+          prompt: promptValue,
+          note: noteValue,
+          fileKeys,
+        })
+        setOutputs((prev) => ({ ...prev, [fieldId]: result.result }))
+      } catch (error) {
+        setOutputs((prev) => ({
+          ...prev,
+          [fieldId]: error instanceof Error ? error.message : "生成に失敗しました",
+        }))
+      }
     } finally {
-      setGeneratingStates((prev) => ({ ...prev, [fieldId]: false }))
+      await stopGenerating(fieldId)
     }
   }
 
@@ -744,15 +760,14 @@ export default function FilesMapping({
   const renderFieldRows = (): JSX.Element[] => {
     const rows: JSX.Element[] = []
 
-    currentFieldGroups.forEach((group, groupIndex) => {
+    currentFieldGroups.forEach((group) => {
       const groupRowSpan = group.fields.length
 
       group.fields.forEach((field, fieldIndex) => {
         const isFirstFieldInGroup = fieldIndex === 0
-        const rowKey = `${group.groupName}-${field.name}`
+        const rowKey = `${activeTemplateKey}-${group.groupName}-${field.name}`
         const fieldId = buildFieldIdentifier(group.groupName, field.name)
-        const legacyFieldName = field.name
-        const currentMappings = mappings[fieldId] || mappings[legacyFieldName] || {}
+        const currentMappings = mappings[fieldId] || {}
 
         rows.push(
           <tr key={rowKey} className="hover:bg-muted/50">
@@ -800,10 +815,10 @@ export default function FilesMapping({
             <td className={`instruction-cell p-2 text-left !col-instruction`}>
               <Textarea
                 placeholder="追加指示を入力"
-                value={instructions[fieldId] || instructions[legacyFieldName] || ""}
+                value={instructions[fieldId] || ""}
                 onChange={(e) => handleInstructionChange(fieldId, e.target.value)}
-                rows={1}
-                className="text-sm w-full resize-y overflow-auto min-h-[1.5rem] max-h-[4.5rem]"
+                rows={3}
+                className="text-sm w-full resize-none overflow-y-auto h-12"
               />
             </td>
           </tr>,
@@ -931,7 +946,7 @@ export default function FilesMapping({
                   </tr>
                 </thead>
 
-                <tbody>{renderFieldRows()}</tbody>
+                <tbody key={activeTemplateKey}>{renderFieldRows()}</tbody>
               </table>
             </div>
           )}
