@@ -451,6 +451,15 @@ export default function TopPage() {
           </Card>
         </div>
       </div>
+      {downloadingJobId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur">
+          <div className="flex flex-col items-center gap-3 rounded-lg bg-slate-950/90 px-6 py-5 text-center text-white shadow-lg">
+            <Loader2 className="h-8 w-8 animate-spin text-white" />
+            <p className="text-base font-medium">Excelファイルを準備中...</p>
+            <p className="text-sm text-white/70">しばらくお待ちください</p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
