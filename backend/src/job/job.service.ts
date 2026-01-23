@@ -312,10 +312,6 @@ export class JobService {
       }
     }
 
-    const systemPrompt =
-      job.template?.systemPrompt ||
-      'You are a helpful legal assistant that summarizes PDF content accurately.';
-
     const hasAiClient = Boolean(this.azureOpenAiConfig || this.openAiApiKey);
 
     let resultText = '';
@@ -323,7 +319,6 @@ export class JobService {
     if (hasAiClient) {
       // const instructionText = this.buildInstructionText(promptForInstruction, noteForInstruction);
       resultText = await this.callOpenAiWithRetry(
-        systemPrompt,
         promptForInstruction,
         documents,
       );
@@ -746,13 +741,12 @@ export class JobService {
   }
 
   private async callOpenAi(
-    systemPrompt: string,
     instructionText: string,
     documents: DocumentContent[],
     requestOptions?: OpenAiRequestOptions,
   ): Promise<string> {
     if (documents.length === 0) {
-      return this.requestOpenAiWithText(systemPrompt, instructionText, requestOptions);
+      return this.requestOpenAiWithText(instructionText, requestOptions);
     }
 
     console.log(`Calling OpenAI with ${documents.length} documents`);
@@ -762,11 +756,10 @@ export class JobService {
       fileName: doc.fileName,
     }));
 
-    return this.processByFileId(fileInputs, instructionText, { systemPrompt }, requestOptions);
+    return this.processByFileId(fileInputs, instructionText, { }, requestOptions);
   }
 
   private async callOpenAiWithRetry(
-    systemPrompt: string,
     instructionText: string,
     documents: DocumentContent[],
   ): Promise<string> {
@@ -777,7 +770,7 @@ export class JobService {
       const timeoutId = setTimeout(() => controller.abort(), this.openAiRequestTimeoutMs);
 
       try {
-        return await this.callOpenAi(systemPrompt, instructionText, documents, {
+        return await this.callOpenAi(instructionText, documents, {
           timeout: this.openAiRequestTimeoutMs,
           signal: controller.signal,
         });
@@ -800,7 +793,6 @@ export class JobService {
   }
 
   private async requestOpenAiWithText(
-    systemPrompt: string,
     instructionText: string,
     requestOptions?: OpenAiRequestOptions,
   ): Promise<string> {
@@ -808,17 +800,6 @@ export class JobService {
     const model = this.azureOpenAiConfig ? this.azureOpenAiConfig.deployment : 'gpt-5';
     const payload: any[] = [];
 
-    if (systemPrompt) {
-      payload.push({
-        role: 'system',
-        content: [
-          {
-            type: 'input_text',
-            text: systemPrompt,
-          },
-        ],
-      });
-    }
 
     payload.push({
       role: 'user',
@@ -836,7 +817,9 @@ export class JobService {
       {
         model,
         input: payload,
-        temperature: 0.2,
+        reasoning: {
+          effort: 'high',
+        }
       },
       requestOptions,
     );
@@ -850,7 +833,6 @@ export class JobService {
     options: {
       model?: string;
       client?: OpenAI;
-      systemPrompt?: string;
     } = {},
     requestOptions?: OpenAiRequestOptions,
   ): Promise<string> {
@@ -865,18 +847,6 @@ export class JobService {
     const client = options.client ?? this.getOpenAiClient();
     const model = options.model ?? (this.azureOpenAiConfig?.deployment ?? 'gpt-5');
     const payload: any[] = [];
-
-    if (options.systemPrompt) {
-      payload.push({
-        role: 'system',
-        content: [
-          {
-            type: 'input_text',
-            text: options.systemPrompt,
-          },
-        ],
-      });
-    }
 
     const userContent: Array<{
       type: string;
@@ -907,7 +877,9 @@ export class JobService {
       {
         model,
         input: payload,
-        temperature: 0.2,
+        reasoning: {
+          effort: 'high',
+        }
       },
       requestOptions,
     );
