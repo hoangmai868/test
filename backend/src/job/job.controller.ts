@@ -18,6 +18,7 @@ import { JobService } from './job.service';
 import { CreateJobDto } from './dto/create-job.dto';
 import { RunPromptDto } from './dto/run-prompt.dto';
 import { UpdateJobDto } from './dto/update-job.dto';
+import { logJobEventSafe } from '../common/file-logger';
 import type { Response } from 'express';
 import type { Queue } from 'bullmq';
 
@@ -192,7 +193,7 @@ export class JobController {
   async runPrompt(@Param('jobId') jobId: string, @Body() runPromptDto: RunPromptDto): Promise<{ success: boolean; data?: any; message?: string }> {
     try {
       const result = await this.jobService.runPrompt(jobId, runPromptDto);
-      console.log('Prompt run result:', result);
+      logJobEventSafe('Prompt run result', result);
       return {
         success: true,
         data: result,

@@ -12,6 +12,7 @@ import { JobFile, JobFileCategory, Prisma } from '../../generated/prisma/client'
 import { AzureBlobStorageService } from 'src/azure-blob/azure-blob.service';
 import { isTemplateGroup } from 'src/common/types/interface';
 import { RunPromptDto } from './dto/run-prompt.dto';
+import { logJobEventSafe } from '../common/file-logger';
 interface TemplateJsonField {
   name: string;
   fileNames: string[];
@@ -813,7 +814,7 @@ export class JobService {
       ],
     });
 
-    console.log(`Requesting OpenAI with text prompt`, JSON.stringify(payload, null, 2));
+    logJobEventSafe('Requesting OpenAI with text prompt', payload);
 
     const response = await client.responses.create(
       {
@@ -875,7 +876,7 @@ export class JobService {
       content: userContent,
     });
 
-    console.log(`Requesting OpenAI with file inputs`, JSON.stringify(payload, null, 2));
+    logJobEventSafe('Requesting OpenAI with file inputs', payload);
 
     const response = await client.responses.create(
       {
