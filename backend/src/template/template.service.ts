@@ -152,6 +152,32 @@ export class TemplateService {
   }
 
   async createTemplateFromSchema(templateName: string, schemaJson: TemplateGroup[]) {
+    const existing = await this.prisma.template.findFirst({
+      where: {
+        fileName: templateName,
+        status: 'active',
+      },
+    });
+    
+    if (existing) {
+      return this.prisma.template.update({
+        where: { id: existing.id },
+        data: {
+          schemaJson,
+          updatedAt: new Date(),
+        },
+        select: {
+          id: true,
+          fileName: true,
+          displayName: true,
+          fileKey: true,
+          schemaJson: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+    }
     return this.prisma.template.create({
       data: {
         fileName: templateName,

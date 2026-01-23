@@ -286,14 +286,30 @@ export class JobService {
       };
     }
 
-    const providedFileKeys =
+    const notePlaceholderKeys = ['追加コメント', '登録コメント'];
+    const filePlaceholderKeys = ['登録ファイル'];
+
+    const hasFilePlaceholder = this.hasPlaceholder(promptText, filePlaceholderKeys);
+    const hasNotePlaceholder = this.hasPlaceholder(promptText, notePlaceholderKeys);
+
+    let promptForInstruction = promptText;
+
+    if (note && hasNotePlaceholder) {
+      promptForInstruction = this.replacePlaceholders(promptText, notePlaceholderKeys, note);
+    }
+
+
+    let documents: DocumentContent[] = [];
+
+    if (hasFilePlaceholder) {
+      const providedFileKeys =
       (runPromptDto.fileKeys || [])
         .map((key) => key.replace(/^\//, ''))
         .filter(Boolean);
 
-    let documents: DocumentContent[] = [];
-    if (providedFileKeys.length > 0) {
-      documents = await this.prepareDocuments(providedFileKeys, job.files);
+      if (providedFileKeys.length > 0) {
+        documents = await this.prepareDocuments(providedFileKeys, job.files);
+      }
     }
 
     const systemPrompt =
@@ -305,10 +321,10 @@ export class JobService {
     let resultText = '';
 
     if (hasAiClient) {
-      const instructionText = this.buildInstructionText(promptText, note);
+      // const instructionText = this.buildInstructionText(promptForInstruction, noteForInstruction);
       resultText = await this.callOpenAiWithRetry(
         systemPrompt,
-        instructionText,
+        promptForInstruction,
         documents,
       );
     } else {
@@ -682,15 +698,51 @@ export class JobService {
     throw new BadRequestException('OpenAI APIキーが設定されていません');
   }
 
-  private buildInstructionText(promptText: string, note: string): string {
-    const parts: string[] = [];
-    if (note) {
-      parts.push(`追加指示:\n${note}`);
+  // private buildInstructionText(promptText: string, note: string): string {
+  //   const parts: string[] = [];
+  //   if (note) {
+  //     parts.push(`追加指示:\n${note}`);
+  //   }
+  //   if (promptText) {
+  //     parts.push(`プロンプト:\n${promptText}`);
+  //   }
+  //   return parts.join('\n\n').trim();
+  // }
+
+  private hasPlaceholder(promptText: string, keys: string[]): boolean {
+    if (!promptText || keys.length === 0) {
+      return false;
     }
-    if (promptText) {
-      parts.push(`プロンプト:\n${promptText}`);
+
+    const pattern = this.buildPlaceholderPattern(keys);
+    if (!pattern) {
+      return false;
     }
-    return parts.join('\n\n').trim();
+
+    return new RegExp(pattern).test(promptText);
+  }
+
+  private replacePlaceholders(promptText: string, keys: string[], replacement: string): string {
+    if (!promptText || !replacement || keys.length === 0) {
+      return promptText;
+    }
+
+    const pattern = this.buildPlaceholderPattern(keys);
+    if (!pattern) {
+      return promptText;
+    }
+
+    const regex = new RegExp(pattern, 'g');
+    return promptText.replace(regex, () => replacement);
+  }
+
+  private buildPlaceholderPattern(keys: string[]): string {
+    const variants = keys.flatMap((key) => {
+      const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return [`\\{${escapedKey}\\}`];
+    });
+
+    return variants.length > 0 ? variants.join('|') : '';
   }
 
   private async callOpenAi(
