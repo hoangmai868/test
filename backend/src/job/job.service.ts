@@ -780,7 +780,7 @@ export class JobService {
       } catch (error) {
         lastError = error;
         if (attempt >= this.openAiRequestMaxAttempts) {
-          throw error;
+          return `OpenAI request failed after ${this.openAiRequestMaxAttempts} attempts: ${lastError}`;
         }
         console.warn(
           `OpenAI request failed (attempt ${attempt}/${this.openAiRequestMaxAttempts}); retrying in ${this.openAiRequestRetryDelayMs}ms`,
@@ -792,7 +792,7 @@ export class JobService {
       }
     }
 
-    throw lastError ?? new Error('OpenAI request failed');
+    return `OpenAI request failed after ${this.openAiRequestMaxAttempts} attempts: ${lastError}`;
   }
 
   private async requestOpenAiWithText(
