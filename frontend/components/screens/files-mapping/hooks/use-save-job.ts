@@ -1,0 +1,291 @@
+"use client"
+
+import { useCallback, useState, type Dispatch, type SetStateAction } from "react"
+import { api, type Template } from "@/lib/api"
+import type { FileInfo, FileInfoByCategory } from "@/contexts/upload-context"
+import type { JobFileCategory as FileCategory } from "@/types/shared/job-file"
+import { buildFieldIdentifier } from "@/lib/field-identifier"
+import { mapTemplateToIdentifier, TemplateJsonField, TemplateJsonGroup, FieldGroup, FieldMappingEntry } from "../utils"
+
+interface UseSaveJobParams {
+  currentFieldGroups: FieldGroup[]
+  fieldMappings: FieldMappingEntry[]
+  uploadedFiles: {
+    customerInfo: File[]
+    contractDocs: File[]
+    registryDocs: File[]
+  }
+  loadedFileInfo?: FileInfoByCategory
+  fileDisplayNameLookup: Record<string, string>
+  effectivePrompts: Record<string, string>
+  templates: Template[]
+  selectedTemplate: string
+  jobId: string | null
+  jobName: string
+  user: { id: string } | null
+  setJobId: (id: string | null) => void
+  setJobName: (value: string) => void
+  setFieldMappings: Dispatch<SetStateAction<FieldMappingEntry[]>>
+  setPromptEntries: Dispatch<SetStateAction<Record<string, string>>>
+  setEditedPrompts: Dispatch<SetStateAction<Record<string, string>>>
+  setMappings: Dispatch<SetStateAction<Record<string, Record<string, boolean>>>>
+  setInstructions: Dispatch<SetStateAction<Record<string, string>>>
+}
+
+export const useSaveJob = ({
+  currentFieldGroups,
+  fieldMappings,
+  uploadedFiles,
+  loadedFileInfo,
+  fileDisplayNameLookup,
+  effectivePrompts,
+  templates,
+  selectedTemplate,
+  jobId,
+  jobName,
+  user,
+  setJobId,
+  setJobName,
+  setFieldMappings,
+  setPromptEntries,
+  setEditedPrompts,
+  setMappings,
+  setInstructions,
+}: UseSaveJobParams) => {
+  const [isSaving, setIsSaving] = useState(false)
+
+  const handleSaveJob = useCallback(
+    async (showAlert = true) => {
+      if (!user || !jobName.trim()) {
+        if (showAlert) {
+          alert("ジョブ名を入力してください")
+        }
+        return null
+      }
+
+      const currentTemplate = templates.find(
+        (template) => mapTemplateToIdentifier(template.fileName) === selectedTemplate,
+      )
+
+      if (!currentTemplate) {
+        if (showAlert) {
+          alert("テンプレートが選択されていません")
+        }
+        return null
+      }
+
+      setIsSaving(true)
+
+      try {
+        const files: Array<{ fileName: string; fileKey?: string; category: FileCategory }> = []
+        const fileKeyMap: Record<string, string | undefined> = {}
+
+        const appendLoadedFiles = (items: FileInfo[] | undefined, category: FileCategory) => {
+          items?.forEach((file) => {
+            files.push({
+              fileName: file.name,
+              fileKey: file.fileKey,
+              category,
+            })
+            if (file.fileKey) {
+              if (file.name) {
+                fileKeyMap[file.name] = file.fileKey
+              }
+              fileKeyMap[file.fileKey] = file.fileKey
+            }
+          })
+        }
+
+        const appendUploadedFiles = (items: File[], category: FileCategory) => {
+          items.forEach((file) => {
+            files.push({
+              fileName: file.name,
+              category,
+            })
+          })
+        }
+
+        const loadedFileBuckets: Array<[FileInfo[] | undefined, FileCategory]> = [
+          [loadedFileInfo?.customerInfo, "customer_info"],
+          [loadedFileInfo?.contractDocs, "contract_documents"],
+          [loadedFileInfo?.registryDocs, "registry_transcript"],
+        ]
+        loadedFileBuckets.forEach(([bucket, category]) => appendLoadedFiles(bucket, category))
+
+        const uploadedFileBuckets: Array<[File[], FileCategory]> = [
+          [uploadedFiles.customerInfo, "customer_info"],
+          [uploadedFiles.contractDocs, "contract_documents"],
+          [uploadedFiles.registryDocs, "registry_transcript"],
+        ]
+        uploadedFileBuckets.forEach(([bucket, category]) => appendUploadedFiles(bucket, category))
+
+        const templateJson: TemplateJsonGroup[] = currentFieldGroups.map((group) => {
+          const groupFields = group.fields.map((field) => {
+            const fieldId = buildFieldIdentifier(group.groupName, field.name)
+            const legacyFieldName = field.name
+            const mapping =
+              fieldMappings.find((m) => m.fieldId === fieldId) ||
+              fieldMappings.find((m) => m.fieldId === legacyFieldName)
+
+            const fileNames = Array.from(
+              new Set(
+                mapping?.fileIds
+                  .map((fileId) => fileDisplayNameLookup[fileId] ?? fileId)
+                  .filter((value): value is string => Boolean(value)),
+              ),
+            )
+            const fileKeys: string[] = []
+            mapping?.fileIds.forEach((fileId) => {
+              const fileKey = fileKeyMap[fileId]
+              if (fileKey) {
+                fileKeys.push(fileKey)
+              }
+            })
+
+            const promptValue = effectivePrompts[fieldId] || effectivePrompts[legacyFieldName] || ""
+
+            return {
+              name: field.name,
+              fileNames,
+              fileKeys,
+              note: mapping?.note || "",
+              extractedValue: mapping?.extractedValue || "",
+              prompt: promptValue,
+            } as TemplateJsonField
+          })
+
+          return {
+            groupName: group.groupName,
+            fields: groupFields,
+          }
+        })
+
+        const jobData = {
+          userId: user.id,
+          templateId: currentTemplate.id,
+          title: jobName,
+          templateJson,
+          files,
+        }
+
+        let draftJob
+        if (jobId) {
+          draftJob = await api.updateJob(jobId, jobData)
+        } else {
+          draftJob = await api.createJob(jobData)
+          setJobId(draftJob.id)
+        }
+
+        try {
+          const fetchedJob = await api.getJob(draftJob.id)
+          if (fetchedJob.title) {
+            setJobName(fetchedJob.title)
+          }
+
+          if (fetchedJob.templateJson && Array.isArray(fetchedJob.templateJson)) {
+            const isGroupedFormat =
+              fetchedJob.templateJson.length > 0 &&
+              fetchedJob.templateJson[0]?.groupName !== undefined
+
+            let flatMappings: Array<FieldMappingEntry & { prompt?: string }> = []
+            const fetchedPromptEntries: Record<string, string> = {}
+
+            if (isGroupedFormat) {
+              fetchedJob.templateJson.forEach((group: TemplateJsonGroup) => {
+                group.fields.forEach((field) => {
+                  const normalizedFieldId = field.name
+                    ? buildFieldIdentifier(group.groupName || "", field.name)
+                    : field.name || ""
+                  flatMappings.push({
+                    fieldId: normalizedFieldId,
+                    fileIds: field.fileNames || [],
+                    note: field.note || "",
+                    extractedValue: field.extractedValue || "",
+                    prompt: field.prompt || "",
+                  })
+                  if (field.name) {
+                    fetchedPromptEntries[normalizedFieldId] = field.prompt || ""
+                  }
+                })
+              })
+            } else {
+              flatMappings = fetchedJob.templateJson.map((mapping: any) => {
+                const promptValue = mapping.prompt || ""
+                if (mapping.fieldId) {
+                  fetchedPromptEntries[mapping.fieldId] = promptValue
+                }
+                return {
+                  fieldId: mapping.fieldId || "",
+                  fileIds: mapping.fileIds || mapping.fileNames || [],
+                  note: mapping.note || "",
+                  extractedValue: mapping.extractedValue || "",
+                  prompt: promptValue,
+                }
+              })
+            }
+
+            setFieldMappings(flatMappings)
+            setPromptEntries(fetchedPromptEntries)
+            setEditedPrompts({})
+
+            const newMappings: Record<string, Record<string, boolean>> = {}
+            flatMappings.forEach((mapping) => {
+              newMappings[mapping.fieldId] = {}
+              mapping.fileIds.forEach((fileId) => {
+                newMappings[mapping.fieldId][fileId] = true
+              })
+            })
+            setMappings(newMappings)
+
+            const newInstructions: Record<string, string> = {}
+            flatMappings.forEach((mapping) => {
+              if (mapping.note) {
+                newInstructions[mapping.fieldId] = mapping.note
+              }
+            })
+            setInstructions(newInstructions)
+          }
+        } catch (fetchError) {
+          console.error("Failed to fetch draft job data:", fetchError)
+        }
+
+        if (showAlert) {
+          alert("保存が完了しました")
+        }
+
+        return draftJob
+      } catch (error) {
+        console.error("Failed to save job:", error)
+        if (showAlert) {
+          alert("保存に失敗しました: " + (error instanceof Error ? error.message : "Unknown error"))
+        }
+        throw error
+      } finally {
+        setIsSaving(false)
+      }
+    },
+    [
+      user,
+      jobName,
+      templates,
+      selectedTemplate,
+      uploadedFiles,
+      loadedFileInfo,
+      currentFieldGroups,
+      fieldMappings,
+      effectivePrompts,
+      jobId,
+      fileDisplayNameLookup,
+      setJobId,
+      setJobName,
+      setFieldMappings,
+      setPromptEntries,
+      setEditedPrompts,
+      setMappings,
+      setInstructions,
+    ],
+  )
+
+  return { isSaving, handleSaveJob }
+}
+

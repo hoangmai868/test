@@ -134,8 +134,10 @@ export default function PromptSettingsModal({
                         fieldMappings.find((m) => m.fieldId === fieldId) ||
                         fieldMappings.find((m) => m.fieldId === legacyFieldName)
                       const selectedFiles = mapping?.fileIds || []
-                      const selectedFileNames = selectedFiles.map(
-                        (fileId) => fileNameLookup[fileId] || fileId,
+                      const selectedFileNames = Array.from(
+                        new Set(
+                          selectedFiles.map((fileId) => fileNameLookup[fileId] || fileId),
+                        ),
                       )
                       const noteForField =
                         instructions[fieldId] || instructions[legacyFieldName] || mapping?.note || ""
