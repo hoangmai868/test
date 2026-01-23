@@ -298,7 +298,6 @@ export class JobService {
       promptForInstruction = this.replacePlaceholders(promptText, notePlaceholderKeys, note);
     }
 
-
     let documents: DocumentContent[] = [];
 
     if (hasFilePlaceholder) {
@@ -310,6 +309,9 @@ export class JobService {
       if (providedFileKeys.length > 0) {
         documents = await this.prepareDocuments(providedFileKeys, job.files);
       }
+
+      promptForInstruction = this.replacePlaceholders(promptForInstruction, filePlaceholderKeys, documents.map((doc) => doc.assistantFileId).join(', '));
+
     }
 
     const hasAiClient = Boolean(this.azureOpenAiConfig || this.openAiApiKey);
@@ -811,7 +813,7 @@ export class JobService {
       ],
     });
 
-    console.log(`Requesting OpenAI with text prompt`, payload);
+    console.log(`Requesting OpenAI with text prompt`, JSON.stringify(payload, null, 2));
 
     const response = await client.responses.create(
       {
@@ -872,6 +874,8 @@ export class JobService {
       role: 'user',
       content: userContent,
     });
+
+    console.log(`Requesting OpenAI with file inputs`, JSON.stringify(payload, null, 2));
 
     const response = await client.responses.create(
       {
