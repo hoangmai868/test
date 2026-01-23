@@ -113,7 +113,7 @@ export default function PromptSettingsModal({
                           onPointerEnter={showPromptTooltip}
                           onPointerLeave={hidePromptTooltip}
                         >
-                          {"{{登録ファイル}} / {{追加コメント}} を使って、使用するファイルやコメントを指定できます。"}
+                          {"{登録ファイル} / {追加コメント} を使って、使用するファイルやコメントを指定できます。"}
                         </TooltipContent>
                       </Tooltip>
                     </div>
