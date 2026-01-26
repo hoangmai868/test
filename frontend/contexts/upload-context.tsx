@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { createContext, useContext, useState, useCallback, useRef, type ReactNode } from "react"
+import { createContext, useContext, useState, useCallback, useRef, type ReactNode, useEffect } from "react"
 import { useAuth } from "@/contexts/auth-context"
 import { api } from "@/lib/api"
 import { JobFileCategory, JobFileInput } from "@/types/shared/job-file"
@@ -31,6 +31,51 @@ export type FileInfoByCategory = {
   customerInfo: FileInfo[]
   contractDocs: FileInfo[]
   registryDocs: FileInfo[]
+}
+
+const DRAFT_PROMPT_ENTRIES_KEY = "files-mapping-prompt-entries"
+const DRAFT_EDITED_PROMPTS_KEY = "files-mapping-edited-prompts"
+
+const readDraftRecord = (storageKey: string): Record<string, string> => {
+  if (typeof window === "undefined") {
+    return {}
+  }
+  const raw = window.sessionStorage.getItem(storageKey)
+  if (!raw) {
+    return {}
+  }
+  try {
+    const parsed = JSON.parse(raw)
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, string>
+    }
+  } catch {
+    // ignore parse errors and return empty
+  }
+  return {}
+}
+
+const writeDraftRecord = (storageKey: string, value: Record<string, string>) => {
+  if (typeof window === "undefined") {
+    return
+  }
+  try {
+    window.sessionStorage.setItem(storageKey, JSON.stringify(value))
+  } catch {
+    // ignore storage failures
+  }
+}
+
+const removeDraftRecord = (storageKey: string) => {
+  if (typeof window === "undefined") {
+    return
+  }
+  window.sessionStorage.removeItem(storageKey)
+}
+
+const clearDraftPromptStorage = () => {
+  removeDraftRecord(DRAFT_PROMPT_ENTRIES_KEY)
+  removeDraftRecord(DRAFT_EDITED_PROMPTS_KEY)
 }
 
 interface UploadContextType {
@@ -118,8 +163,12 @@ export function UploadProvider({ children }: { children: ReactNode }) {
   const [jobId, setJobId] = useState<string | null>(null)
   const [jobTemplateId, setJobTemplateId] = useState<string | null>(null)
   const [isLoadingJob, setIsLoadingJob] = useState(false)
-  const [promptEntries, setPromptEntries] = useState<Record<string, string>>({})
-  const [editedPrompts, setEditedPrompts] = useState<Record<string, string>>({})
+  const [promptEntries, setPromptEntries] = useState<Record<string, string>>(() =>
+    readDraftRecord(DRAFT_PROMPT_ENTRIES_KEY),
+  )
+  const [editedPrompts, setEditedPrompts] = useState<Record<string, string>>(() =>
+    readDraftRecord(DRAFT_EDITED_PROMPTS_KEY),
+  )
   const { user } = useAuth()
   const [deletedFiles, setDeletedFiles] = useState<Record<UploadCategoryKey, Set<string>>>({
     customerInfo: new Set(),
@@ -173,7 +222,23 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     setJobTemplateId(null)
     setPromptEntries({})
     setEditedPrompts({})
+    clearDraftPromptStorage()
   }, [])
+
+  useEffect(() => {
+    if (jobId) {
+      clearDraftPromptStorage()
+      return
+    }
+    writeDraftRecord(DRAFT_PROMPT_ENTRIES_KEY, promptEntries)
+  }, [jobId, promptEntries])
+
+  useEffect(() => {
+    if (jobId) {
+      return
+    }
+    writeDraftRecord(DRAFT_EDITED_PROMPTS_KEY, editedPrompts)
+  }, [jobId, editedPrompts])
 
   const loadJobData = useCallback(async (loadJobId: string) => {
     setDeletedFiles({

@@ -271,6 +271,8 @@ export const useFilesMappingState = ({
     isSaving,
     handleSaveJob,
     jobName,
+    promptEntries,
+    editedPrompts,
     user,
     setPromptEntries,
     setEditedPrompts,

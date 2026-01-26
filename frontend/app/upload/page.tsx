@@ -97,10 +97,15 @@ function UploadContent() {
 
   useEffect(() => {
     const currentStepNum = Number.parseInt(step)
+    const isHydratingStep2 =
+      currentStepNum === 2 && Boolean(urlJobId) && loadedJobId !== urlJobId
+    if (isHydratingStep2) {
+      return
+    }
     if (!canAccessStep(currentStepNum) && !isLoadingJob) {
       router.push(buildStepUrl(1))
     }
-  }, [step, canAccessStep, router, isLoadingJob, urlJobId, jobId])
+  }, [step, canAccessStep, router, isLoadingJob, urlJobId, jobId, loadedJobId])
 
   if (isLoadingJob) {
     return (
