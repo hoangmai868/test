@@ -74,17 +74,15 @@ export const useFilesMappingHandlers = (state: FilesMappingHandlersState) => {
       if (candidateIds.length === 0) {
         return
       }
+      const primaryFileId = candidateIds[0]
 
       setMappings((prev) => {
         const prevField = prev[fieldId] || {}
         const updated = { ...prevField }
-        candidateIds.forEach((id) => {
-          if (checked) {
-            updated[id] = true
-          } else {
-            delete updated[id]
-          }
-        })
+        candidateIds.forEach((id) => delete updated[id])
+        if (checked && primaryFileId) {
+          updated[primaryFileId] = true
+        }
         const next = { ...prev }
         if (Object.keys(updated).length === 0) {
           delete next[fieldId]
@@ -100,20 +98,22 @@ export const useFilesMappingHandlers = (state: FilesMappingHandlersState) => {
         if (existing) {
           return prev.map((mapping) => {
             if (mapping.fieldId === fieldId || mapping.fieldId === legacy) {
-              const newFileIds = checked
-                ? Array.from(new Set([...mapping.fileIds, ...candidateIds]))
-                : mapping.fileIds.filter((id) => !candidateIds.includes(id))
+              const filteredIds = mapping.fileIds.filter((id) => !candidateIds.includes(id))
+              const newFileIds =
+                checked && primaryFileId
+                  ? Array.from(new Set([...filteredIds, primaryFileId]))
+                  : filteredIds
               return { ...mapping, fieldId, fileIds: newFileIds }
             }
             return mapping
           })
         }
-        if (checked) {
+        if (checked && primaryFileId) {
           return [
             ...prev,
             {
               fieldId,
-              fileIds: candidateIds,
+              fileIds: [primaryFileId],
               note: instructions[fieldId] || "",
               extractedValue: "",
             },

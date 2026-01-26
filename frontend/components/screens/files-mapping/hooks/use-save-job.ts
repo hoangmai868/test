@@ -16,7 +16,6 @@ interface UseSaveJobParams {
     registryDocs: File[]
   }
   loadedFileInfo?: FileInfoByCategory
-  fileDisplayNameLookup: Record<string, string>
   effectivePrompts: Record<string, string>
   templates: Template[]
   selectedTemplate: string
@@ -37,7 +36,6 @@ export const useSaveJob = ({
   fieldMappings,
   uploadedFiles,
   loadedFileInfo,
-  fileDisplayNameLookup,
   effectivePrompts,
   templates,
   selectedTemplate,
@@ -128,11 +126,7 @@ export const useSaveJob = ({
               fieldMappings.find((m) => m.fieldId === legacyFieldName)
 
             const fileNames = Array.from(
-              new Set(
-                mapping?.fileIds
-                  .map((fileId) => fileDisplayNameLookup[fileId] ?? fileId)
-                  .filter((value): value is string => Boolean(value)),
-              ),
+              new Set(mapping?.fileIds.filter((fileId): fileId is string => Boolean(fileId))),
             )
             const fileKeys: string[] = []
             mapping?.fileIds.forEach((fileId) => {
@@ -275,7 +269,6 @@ export const useSaveJob = ({
       fieldMappings,
       effectivePrompts,
       jobId,
-      fileDisplayNameLookup,
       setJobId,
       setJobName,
       setFieldMappings,

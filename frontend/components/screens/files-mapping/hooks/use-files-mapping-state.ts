@@ -203,7 +203,6 @@ export const useFilesMappingState = ({
     fieldMappings,
     uploadedFiles,
     loadedFileInfo,
-    fileDisplayNameLookup,
     effectivePrompts,
     templates,
     selectedTemplate,
