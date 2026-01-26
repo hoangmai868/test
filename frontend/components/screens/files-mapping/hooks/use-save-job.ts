@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useState, type Dispatch, type SetStateAction } from "react"
+import { useRouter } from "next/navigation"
 import { api, type Template } from "@/lib/api"
 import type { FileInfo, FileInfoByCategory } from "@/contexts/upload-context"
 import type { JobFileCategory as FileCategory } from "@/types/shared/job-file"
@@ -50,6 +51,7 @@ export const useSaveJob = ({
   setMappings,
   setInstructions,
 }: UseSaveJobParams) => {
+  const router = useRouter()
   const [isSaving, setIsSaving] = useState(false)
 
   const handleSaveJob = useCallback(
@@ -244,7 +246,8 @@ export const useSaveJob = ({
         }
 
         if (showAlert) {
-          alert("保存が完了しました")
+          // alert("保存が完了しました")
+          router.push("/")
         }
 
         return draftJob
@@ -276,6 +279,7 @@ export const useSaveJob = ({
       setEditedPrompts,
       setMappings,
       setInstructions,
+      router,
     ],
   )
 

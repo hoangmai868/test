@@ -37,7 +37,6 @@ export default function FilesMappingScreen(props: FilesMappingProps) {
     handlePromptChange,
     handleGenerate,
     handleSave,
-    handlePromptRegister,
     handleOpenPromptModal,
     handleConfirmNavigateHome,
     isSaving,
@@ -51,6 +50,15 @@ export default function FilesMappingScreen(props: FilesMappingProps) {
 
   return (
     <div className="space-y-6">
+      {isSaving && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur">
+          <div className="flex flex-col items-center gap-3 rounded-lg bg-slate-950/90 px-6 py-5 text-center text-white shadow-lg">
+            <Loader2 className="h-8 w-8 animate-spin text-white" />
+            <p className="text-base font-medium">保存中...</p>
+            <p className="text-sm text-white/70">しばらくお待ちください</p>
+          </div>
+        </div>
+      )}
       <Card className="!rounded-none">
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -87,14 +95,7 @@ export default function FilesMappingScreen(props: FilesMappingProps) {
                 onClick={() => handleSaveJob(true)}
                 disabled={isSaving || !jobName.trim() || !user}
               >
-                {isSaving ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    保存中...
-                  </>
-                ) : (
-                  "一時保存"
-                )}
+                一時保存
               </Button>
 
               <Button variant="outline" size="icon" onClick={handleOpenPromptModal}>
@@ -162,7 +163,6 @@ export default function FilesMappingScreen(props: FilesMappingProps) {
         handlePromptChange={handlePromptChange}
         handleGenerate={handleGenerate}
         handleSave={handleSave}
-        handlePromptRegister={handlePromptRegister}
         fileNameLookup={fileDisplayNameLookup}
       />
 

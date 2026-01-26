@@ -259,21 +259,12 @@ export const useFilesMappingHandlers = (state: FilesMappingHandlersState) => {
       setOutputs,
     ],
   )
-  const handlePromptRegister = useCallback(async () => {
+
+  const handleSave = useCallback(async () => {
     setIsPromptModalOpen(false)
-    if (!canProceed) {
-      return
-    }
-    try {
-      await handleSaveJob(false)
-    } catch (error) {
-      console.error("Auto-save failed:", error)
-    }
-    onNext()
-  }, [canProceed, handleSaveJob, onNext, setIsPromptModalOpen])
-  const handleSave = useCallback(() => {
-    setIsPromptModalOpen(false)
-  }, [setIsPromptModalOpen])
+    await handleSaveJob(false)
+  }, [setIsPromptModalOpen, handleSaveJob])
+
   const handleOpenPromptModal = useCallback(() => {
     if (!user || !jobName.trim()) {
       alert("ジョブ名を入力してください")
@@ -291,7 +282,6 @@ export const useFilesMappingHandlers = (state: FilesMappingHandlersState) => {
     handleInstructionChange,
     handlePromptChange,
     handleGenerate,
-    handlePromptRegister,
     handleSave,
     handleOpenPromptModal,
     handleConfirmNavigateHome,
