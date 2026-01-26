@@ -17,6 +17,14 @@ import {
 } from "../utils"
 import { useSaveJob } from "./use-save-job"
 
+type TemplateDraft = {
+  mappings: Record<string, Record<string, boolean>>
+  instructions: Record<string, string>
+  fieldMappings: FieldMappingEntry[]
+  promptEntries: Record<string, string>
+  editedPrompts: Record<string, string>
+}
+
 export const useFilesMappingState = ({
   uploadedFiles,
   loadedFileInfo,
@@ -41,7 +49,7 @@ export const useFilesMappingState = ({
     setEditedPrompts,
   } = useUploadContext()
 
-  const [selectedTemplate, setSelectedTemplate] = useState("typeA")
+  const [selectedTemplate, setSelectedTemplate] = useState("明渡")
   const [isPromptModalOpen, setIsPromptModalOpen] = useState(false)
   const [outputs, setOutputs] = useState<Record<string, string>>({})
   const [generatingStates, setGeneratingStates] = useState<Record<string, boolean>>({})
@@ -69,6 +77,7 @@ export const useFilesMappingState = ({
     })
     return initial
   })
+  const [templateDrafts, setTemplateDrafts] = useState<Record<string, TemplateDraft>>({})
 
   const templatePrompts = useMemo(
     () => buildPromptsFromFieldGroups(templateFieldGroups[selectedTemplate] || []),
@@ -117,7 +126,7 @@ export const useFilesMappingState = ({
   const selectedTemplateDisplayName =
     templates.find((template) => mapTemplateToIdentifier(template.fileName) === selectedTemplate)
       ?.displayName ?? "テンプレート"
-  const activeTemplateKey = selectedTemplate || "default-template"
+  const activeTemplateKey = selectedTemplate || "明渡"
 
   const fileKeyLookup = useMemo(() => {
     const lookup: Record<string, string> = {}
@@ -203,7 +212,6 @@ export const useFilesMappingState = ({
     fieldMappings,
     uploadedFiles,
     loadedFileInfo,
-    fileDisplayNameLookup,
     effectivePrompts,
     templates,
     selectedTemplate,
@@ -245,6 +253,8 @@ export const useFilesMappingState = ({
     setMappings,
     instructions,
     setInstructions,
+    templateDrafts,
+    setTemplateDrafts,
     fieldMappings,
     setFieldMappings,
     effectivePrompts,

@@ -11,22 +11,28 @@ import type { FilesMappingState } from "./use-files-mapping-state"
 type FilesMappingHandlersState = FilesMappingState & {
   setFieldMappings: Dispatch<SetStateAction<FieldMappingEntry[]>>
   fileKeyLookup: Record<string, string>
+  promptEntries: Record<string, string>
+  editedPrompts: Record<string, string>
 }
 
 export const useFilesMappingHandlers = (state: FilesMappingHandlersState) => {
   const router = useRouter()
-
   const {
     templates,
+    selectedTemplate,
     setSelectedTemplate,
     setMappings,
     setInstructions,
     setFieldMappings,
     instructions,
+    promptEntries,
+    editedPrompts,
     fieldMappings,
     mappings,
     setPromptEntries,
     setEditedPrompts,
+    templateDrafts,
+    setTemplateDrafts,
     effectivePrompts,
     jobId,
     jobName,
@@ -42,15 +48,28 @@ export const useFilesMappingHandlers = (state: FilesMappingHandlersState) => {
     onNext,
     canProceed,
   } = state
-
   const handleTemplateChange = useCallback(
     (newTemplate: string) => {
+      if (newTemplate === selectedTemplate) {
+        return
+      }
+      const cachedDraft = templateDrafts[newTemplate]
+      setTemplateDrafts((prev) => ({
+        ...prev,
+        [selectedTemplate]: {
+          mappings,
+          instructions,
+          promptEntries,
+          editedPrompts,
+          fieldMappings,
+        },
+      }))
       setSelectedTemplate(newTemplate)
-      setMappings({})
-      setInstructions({})
-      setFieldMappings([])
-      setPromptEntries({})
-      setEditedPrompts({})
+      setMappings(cachedDraft?.mappings ?? {})
+      setInstructions(cachedDraft?.instructions ?? {})
+      setFieldMappings(cachedDraft?.fieldMappings ?? [])
+      setPromptEntries(cachedDraft?.promptEntries ?? {})
+      setEditedPrompts(cachedDraft?.editedPrompts ?? {})
       const selectedTemplateDetail = templates.find(
         (template) => mapTemplateToIdentifier(template.fileName) === newTemplate,
       )
@@ -58,33 +77,38 @@ export const useFilesMappingHandlers = (state: FilesMappingHandlersState) => {
     },
     [
       templates,
+      selectedTemplate,
+      templateDrafts,
       setMappings,
       setInstructions,
       setFieldMappings,
       setPromptEntries,
       setEditedPrompts,
+      setTemplateDrafts,
       setSelectedTemplate,
       setJobTemplateId,
+      fieldMappings,
+      mappings,
+      instructions,
+      promptEntries,
+      editedPrompts,
     ],
   )
-
   const handleCheckboxChange = useCallback(
     (fieldId: string, file: DisplayFile, checked: boolean) => {
       const candidateIds = getDisplayFileCandidates(file)
       if (candidateIds.length === 0) {
         return
       }
+      const primaryFileId = candidateIds[0]
 
       setMappings((prev) => {
         const prevField = prev[fieldId] || {}
         const updated = { ...prevField }
-        candidateIds.forEach((id) => {
-          if (checked) {
-            updated[id] = true
-          } else {
-            delete updated[id]
-          }
-        })
+        candidateIds.forEach((id) => delete updated[id])
+        if (checked && primaryFileId) {
+          updated[primaryFileId] = true
+        }
         const next = { ...prev }
         if (Object.keys(updated).length === 0) {
           delete next[fieldId]
@@ -93,27 +117,28 @@ export const useFilesMappingHandlers = (state: FilesMappingHandlersState) => {
         }
         return next
       })
-
       setFieldMappings((prev: FieldMappingEntry[]) => {
         const legacy = getFieldNameFromIdentifier(fieldId)
         const existing = prev.find((mapping) => mapping.fieldId === fieldId || mapping.fieldId === legacy)
         if (existing) {
           return prev.map((mapping) => {
             if (mapping.fieldId === fieldId || mapping.fieldId === legacy) {
-              const newFileIds = checked
-                ? Array.from(new Set([...mapping.fileIds, ...candidateIds]))
-                : mapping.fileIds.filter((id) => !candidateIds.includes(id))
+              const filteredIds = mapping.fileIds.filter((id) => !candidateIds.includes(id))
+              const newFileIds =
+                checked && primaryFileId
+                  ? Array.from(new Set([...filteredIds, primaryFileId]))
+                  : filteredIds
               return { ...mapping, fieldId, fileIds: newFileIds }
             }
             return mapping
           })
         }
-        if (checked) {
+        if (checked && primaryFileId) {
           return [
             ...prev,
             {
               fieldId,
-              fileIds: candidateIds,
+              fileIds: [primaryFileId],
               note: instructions[fieldId] || "",
               extractedValue: "",
             },
@@ -124,7 +149,6 @@ export const useFilesMappingHandlers = (state: FilesMappingHandlersState) => {
     },
     [instructions, setFieldMappings, setMappings],
   )
-
   const handleInstructionChange = useCallback(
     (fieldId: string, instruction: string) => {
       setInstructions((prev) => ({ ...prev, [fieldId]: instruction }))
@@ -143,19 +167,16 @@ export const useFilesMappingHandlers = (state: FilesMappingHandlersState) => {
     },
     [setInstructions, setFieldMappings],
   )
-
   const handlePromptChange = useCallback(
     (fieldId: string, value: string) => {
       setEditedPrompts((prev) => ({ ...prev, [fieldId]: value }))
     },
     [setEditedPrompts],
   )
-
   const startGenerating = useCallback((fieldId: string) => {
     loadingStartTimesRef.current[fieldId] = Date.now()
     setGeneratingStates((prev) => ({ ...prev, [fieldId]: true }))
   }, [setGeneratingStates])
-
   const stopGenerating = useCallback(
     async (fieldId: string) => {
       const startTime = loadingStartTimesRef.current[fieldId]
@@ -169,13 +190,11 @@ export const useFilesMappingHandlers = (state: FilesMappingHandlersState) => {
     },
     [setGeneratingStates],
   )
-
   const handleGenerate = useCallback(
     async (fieldId: string) => {
       const legacy = getFieldNameFromIdentifier(fieldId)
       startGenerating(fieldId)
       setOutputs((prev) => ({ ...prev, [fieldId]: "" }))
-
       try {
         if (!jobId) {
           setOutputs((prev) => ({
@@ -184,7 +203,6 @@ export const useFilesMappingHandlers = (state: FilesMappingHandlersState) => {
           }))
           return
         }
-
         const promptValue = effectivePrompts[fieldId] || effectivePrompts[legacy] || ""
         const mapping =
           fieldMappings.find((mapping) => mapping.fieldId === fieldId) ||
@@ -194,7 +212,6 @@ export const useFilesMappingHandlers = (state: FilesMappingHandlersState) => {
           setOutputs((prev) => ({ ...prev, [fieldId]: "" }))
           return
         }
-
         const mappedFileIds = mapping?.fileIds || []
         const missingKeys = mappedFileIds.filter((fileId) => !fileKeyLookup[fileId])
         if (missingKeys.length > 0) {
@@ -212,7 +229,6 @@ export const useFilesMappingHandlers = (state: FilesMappingHandlersState) => {
               .filter((key): key is string => Boolean(key)),
           ),
         )
-
         try {
           const result = await api.runPrompt({
             jobId,
@@ -243,7 +259,6 @@ export const useFilesMappingHandlers = (state: FilesMappingHandlersState) => {
       setOutputs,
     ],
   )
-
   const handlePromptRegister = useCallback(async () => {
     setIsPromptModalOpen(false)
     if (!canProceed) {
@@ -256,11 +271,9 @@ export const useFilesMappingHandlers = (state: FilesMappingHandlersState) => {
     }
     onNext()
   }, [canProceed, handleSaveJob, onNext, setIsPromptModalOpen])
-
   const handleSave = useCallback(() => {
     setIsPromptModalOpen(false)
   }, [setIsPromptModalOpen])
-
   const handleOpenPromptModal = useCallback(() => {
     if (!user || !jobName.trim()) {
       alert("ジョブ名を入力してください")
@@ -268,12 +281,10 @@ export const useFilesMappingHandlers = (state: FilesMappingHandlersState) => {
     }
     setIsPromptModalOpen(true)
   }, [jobName, user, setIsPromptModalOpen])
-
   const handleConfirmNavigateHome = useCallback(() => {
     setIsConfirmReturnOpen(false)
     router.push("/")
   }, [router, setIsConfirmReturnOpen])
-
   return {
     handleTemplateChange,
     handleCheckboxChange,
