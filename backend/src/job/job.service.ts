@@ -266,7 +266,7 @@ export class JobService {
         },
       },
       orderBy: {
-        createdAt: 'desc',
+        updatedAt: 'desc',
       },
     });
   }

@@ -39,7 +39,6 @@ interface PromptSettingsModalProps {
   handlePromptChange: (fieldId: string, value: string) => void
   handleGenerate: (fieldId: string) => Promise<void>
   handleSave: () => void
-  handlePromptRegister: () => void
   fileNameLookup: Record<string, string>
 }
 
@@ -56,7 +55,6 @@ export default function PromptSettingsModal({
   handlePromptChange,
   handleGenerate,
   handleSave,
-  handlePromptRegister,
   fileNameLookup,
 }: PromptSettingsModalProps) {
   const [isPromptTooltipHovered, setIsPromptTooltipHovered] = useState(false)
@@ -217,11 +215,11 @@ export default function PromptSettingsModal({
         </ScrollArea>
 
         <DialogFooter className="pt-4 gap-2 border-t">
-          <Button onClick={handleSave} variant="outline">
-            保存
+          <Button onClick={() => onOpenChange(false)} variant="outline">
+            キャンセル
           </Button>
-          <Button onClick={handlePromptRegister} className="bg-yellow-500 hover:bg-yellow-600 text-white">
-            プロンプト登録
+          <Button onClick={handleSave} className="bg-yellow-500 hover:bg-yellow-600 text-white">
+            保存
           </Button>
         </DialogFooter>
       </DialogContent>
