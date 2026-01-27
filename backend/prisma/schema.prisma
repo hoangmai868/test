@@ -76,14 +76,15 @@ model Job {
 }
 
 model JobFile {
-  id        String          @id @default(uuid())
-  jobId     String          @map("job_id")
-  category  JobFileCategory
-  fileName  String?         @map("file_name")
-  fileKey   String?         @map("file_key")
-  assistantFileId String?   @map("assistant_file_id")
-  createdAt DateTime        @default(now()) @map("created_at") @db.Timestamptz
-  job       Job             @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  id              String          @id @default(uuid())
+  jobId           String          @map("job_id")
+  category        JobFileCategory
+  fileName        String?         @map("file_name")
+  fileKey         String?         @map("file_key")
+  assistantFileId String?         @map("assistant_file_id")
+  imagesKeys      String[]        @default([]) @map("images_key")
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  job             Job             @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   @@map("jobs_files")
 }

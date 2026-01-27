@@ -12,6 +12,7 @@ import { JobFile, JobFileCategory, Prisma } from '../../generated/prisma/client'
 import { AzureBlobStorageService } from 'src/azure-blob/azure-blob.service';
 import { isTemplateGroup } from 'src/common/types/interface';
 import { RunPromptDto } from './dto/run-prompt.dto';
+import { PdfPreviewService } from './pdf-preview.service';
 import { logJobEventSafe } from '../common/file-logger';
 interface TemplateJsonField {
   name: string;
@@ -30,7 +31,8 @@ interface TemplateJsonGroup {
 interface DocumentContent {
   fileKey: string;
   fileName: string;
-  assistantFileId: string;
+  imageKeys: string[];
+  // assistantFileId: string;
 }
 
 interface OpenAiRequestOptions {
@@ -70,6 +72,7 @@ export class JobService {
   constructor(
     private prisma: PrismaService,
     private readonly azureBlobStorage: AzureBlobStorageService,
+    private readonly pdfPreviewService: PdfPreviewService,
   ) {
     const azureApiKey = process.env.AZURE_OPENAI_API_KEY;
     const azureEndpoint = process.env.AZURE_OPENAI_ENDPOINT;
@@ -311,7 +314,7 @@ export class JobService {
         documents = await this.prepareDocuments(providedFileKeys, job.files);
       }
 
-      promptForInstruction = this.replacePlaceholders(promptForInstruction, filePlaceholderKeys, documents.map((doc) => doc.assistantFileId).join(', '));
+      promptForInstruction = this.replacePlaceholders(promptForInstruction, filePlaceholderKeys, documents.map((doc) => doc.fileName).join(', '));
 
     }
 
@@ -591,14 +594,19 @@ export class JobService {
 
       const fileName =
         jobFile.fileName || key.split('/').pop() || `blob-${key}`;
-      const assistantFileId =
-        jobFile.assistantFileId ??
-        (await this.uploadAndUpdateAssistantFile(jobFile, key, fileName));
+
+      const imageKeys = (jobFile.imagesKeys && jobFile.imagesKeys.length > 0) ? jobFile.imagesKeys : (await this.pdfPreviewService.generatePreview(jobFile.id, key, jobFile.jobId, fileName));
+      console.log(`Preview images for file ${key}:`, imageKeys);
+      console.log(`Generated ${imageKeys.length} preview images for file ${key}`);
+      // const assistantFileId = 
+      //   jobFile.assistantFileId ??
+      //   (await this.uploadAndUpdateAssistantFile(jobFile, key, fileName));
 
       documents.push({
         fileKey: key,
         fileName,
-        assistantFileId,
+        imageKeys,
+        // assistantFileId,
       });
     }
 
@@ -754,12 +762,7 @@ export class JobService {
 
     console.log(`Calling OpenAI with ${documents.length} documents`);
 
-    const fileInputs: AssistantFileReference[] = documents.map((doc) => ({
-      fileId: doc.assistantFileId,
-      fileName: doc.fileName,
-    }));
-
-    return this.processByFileId(fileInputs, instructionText, { }, requestOptions);
+    return this.processByFileId(documents, instructionText, { }, requestOptions);
   }
 
   private async callOpenAiWithRetry(
@@ -800,7 +803,7 @@ export class JobService {
     requestOptions?: OpenAiRequestOptions,
   ): Promise<string> {
     const client = this.getOpenAiClient();
-    const model = this.azureOpenAiConfig ? this.azureOpenAiConfig.deployment : 'gpt-5';
+    const model = this.azureOpenAiConfig ? this.azureOpenAiConfig.deployment : 'gpt-5.1';
     const payload: any[] = [];
 
 
@@ -831,7 +834,7 @@ export class JobService {
   }
 
   private async processByFileId(
-    fileInputs: string | AssistantFileReference[],
+    documents: DocumentContent[],
     prompt: string,
     options: {
       model?: string;
@@ -839,36 +842,53 @@ export class JobService {
     } = {},
     requestOptions?: OpenAiRequestOptions,
   ): Promise<string> {
-    const references = Array.isArray(fileInputs)
-      ? fileInputs.filter((input): input is AssistantFileReference => Boolean(input?.fileId))
-      : [{ fileId: fileInputs }];
+    // const references: AssistantFileReference[] = documents
+    //   .filter((d): d is DocumentContent & { assistantFileId: string } => Boolean(d.assistantFileId))
+    //   .map((d) => ({ fileId: d.assistantFileId, fileName: d.fileName }));
 
-    if (references.length === 0) {
-      throw new BadRequestException('assistantFileId が必要です');
+     // collect image presigned URLs
+    const imageUrls: string[] = [];
+    for (const doc of documents) {
+      const keys = Array.isArray(doc.imageKeys) ? doc.imageKeys : [];
+      for (const key of keys) {
+        if (!key) continue;
+        const normalized = key.replace(/^\//, '');
+        try {
+          const url = await this.azureBlobStorage.generateDownloadUrl(normalized);
+          imageUrls.push(url);
+        } catch {
+          // skip failures to generate url for a given image
+        }
+      }
     }
+    // if (references.length === 0) {
+    //   throw new BadRequestException('assistantFileId が必要です');
+    // }
 
     const client = options.client ?? this.getOpenAiClient();
-    const model = options.model ?? (this.azureOpenAiConfig?.deployment ?? 'gpt-5');
+    const model = options.model ?? (this.azureOpenAiConfig?.deployment ?? 'gpt-5.1');
     const payload: any[] = [];
 
-    const userContent: Array<{
-      type: string;
-      file_id?: string;
-      text?: string;
-    }> = references.map((ref) => {
-      const content: {
-        type: string;
-        file_id: string;
-      } = {
-        type: 'input_file',
-        file_id: ref.fileId,
-      };
-      return content;
-    });
+    const userContent: Array<Record<string, any>> = [];
 
     userContent.push({
       type: 'input_text',
       text: prompt,
+    });
+
+    // add file references
+    // references.forEach((ref) => {
+    //   userContent.push({
+    //     type: 'input_file',
+    //     file_id: ref.fileId,
+    //   });
+    // });
+
+    imageUrls.forEach((url) => {
+      userContent.push({
+        type: 'input_image',
+        image_url: url,
+      });
     });
 
     payload.push({
