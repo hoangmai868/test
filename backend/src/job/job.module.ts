@@ -5,6 +5,7 @@ import { JobService } from './job.service';
 import { AzureBlobStorageService } from 'src/azure-blob/azure-blob.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { JobProcessor } from './job.processor';
+import { PdfPreviewService } from './pdf-preview.service';
 
 @Module({
   imports: [
@@ -14,8 +15,8 @@ import { JobProcessor } from './job.processor';
     }),
   ],
   controllers: [JobController],
-  providers: [JobService, AzureBlobStorageService, JobProcessor],
-  exports: [JobService],
+  providers: [JobService, AzureBlobStorageService, JobProcessor, PdfPreviewService],
+  exports: [JobService, PdfPreviewService],
 })
 export class JobModule {}
 

@@ -52,6 +52,27 @@ export class AzureBlobStorageService {
     };
   }
 
+  async uploadImage(params: {
+    blobName: string;
+    buffer: Buffer;
+    contentType: string;
+  }) {
+    const { blobName, buffer, contentType } = params;
+    const containerClient =
+      this.blobServiceClient.getContainerClient(this.containerName);
+    const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+    await blockBlobClient.uploadData(buffer, {
+      blobHTTPHeaders: {
+        blobContentType: contentType,
+      },
+    });
+
+    return {
+      url: blockBlobClient.url,
+      fileKey: `/${blobName}`,
+    };
+  }
+
   async generateDownloadUrl(blobName: string) {
     const containerClient =
       this.blobServiceClient.getContainerClient(this.containerName);
@@ -62,7 +83,7 @@ export class AzureBlobStorageService {
         containerName: this.containerName,
         blobName,
         permissions: BlobSASPermissions.parse('r'),
-        expiresOn: new Date(Date.now() + 5 * 60 * 1000),
+        expiresOn: new Date(Date.now() + 10 * 60 * 1000),
       },
       this.credential,
     ).toString();
