@@ -595,7 +595,7 @@ export class JobService {
       const fileName =
         jobFile.fileName || key.split('/').pop() || `blob-${key}`;
 
-      const imageKeys = (jobFile.imagesKeys && jobFile.imagesKeys.length > 0) ? jobFile.imagesKeys : (await this.pdfPreviewService.generatePreview(key, jobFile.jobId, fileName));
+      const imageKeys = (jobFile.imagesKeys && jobFile.imagesKeys.length > 0) ? jobFile.imagesKeys : (await this.pdfPreviewService.generatePreview(jobFile.id, key, jobFile.jobId, fileName));
       console.log(`Preview images for file ${key}:`, imageKeys);
       console.log(`Generated ${imageKeys.length} preview images for file ${key}`);
       // const assistantFileId = 
