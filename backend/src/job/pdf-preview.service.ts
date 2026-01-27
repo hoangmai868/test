@@ -162,7 +162,7 @@ export class PdfPreviewService {
             if (rotation && rotation % 360 !== 0) {
               try {
                 pageBuffer = await sharp(pageBuffer).rotate(rotation).toBuffer();
-                console.log(`Rotated page ${pageNumber} by ${rotation} degrees`);
+                logJobEventSafe(`Rotated page ${pageNumber} of ${id} by ${rotation} degrees`);
               } catch (rotateErr) {
                 console.warn('Image rotation failed, uploading original image', rotateErr);
               }
