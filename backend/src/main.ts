@@ -16,6 +16,9 @@ async function bootstrap() {
     credentials: true,
   });
 
+  const server = app.getHttpServer();
+  server.setTimeout(900_000);
+
   await app.listen(process.env.PORT ?? 4000);
 }
 bootstrap();
