@@ -62,7 +62,9 @@ function UploadContent() {
   // Load job data when jobId is in URL (edit mode)
   useEffect(() => {
     const loadJob = async () => {
-      if (urlJobId && urlJobId !== loadedJobId) {
+      // Only load if urlJobId is different from both the loaded and current context jobId
+      // This prevents reloading when a new job gets its ID assigned during creation
+      if (urlJobId && urlJobId !== loadedJobId && urlJobId !== jobId) {
         try {
           // Clear stale state from previous sessions/jobs before loading
           resetContext()
@@ -78,10 +80,14 @@ function UploadContent() {
           // Redirect to step 1 without jobId if loading fails
           router.push("/upload?step=1")
         }
+      } else if (urlJobId && urlJobId === jobId && urlJobId !== loadedJobId) {
+        // Job ID matches context but not loaded state - just update loaded state
+        // This happens when a new job gets created and assigned an ID
+        setLoadedJobId(urlJobId)
       }
     }
     loadJob()
-  }, [urlJobId, loadedJobId, loadJobData, resetContext, router, setDeletedFiles])
+  }, [urlJobId, loadedJobId, jobId, loadJobData, resetContext, router, setDeletedFiles])
 
   // Reset loadedJobId when navigating away (no jobId in URL)
   useEffect(() => {

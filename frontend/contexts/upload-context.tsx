@@ -241,11 +241,6 @@ export function UploadProvider({ children }: { children: ReactNode }) {
   }, [jobId, editedPrompts])
 
   const loadJobData = useCallback(async (loadJobId: string) => {
-    setDeletedFiles({
-      customerInfo: new Set(),
-      contractDocs: new Set(),
-      registryDocs: new Set(),
-    })
     try {
       setIsLoadingJob(true)
       const jobData = await api.getJob(loadJobId)
