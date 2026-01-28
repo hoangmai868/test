@@ -277,6 +277,7 @@ export const useFilesMappingState = ({
     setPromptEntries,
     setEditedPrompts,
     setJobTemplateId,
+    jobTemplateId,
     jobId,
     registerStepSaveHandler,
     onBack,

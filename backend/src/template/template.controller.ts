@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   Post,
+  Put,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -76,6 +77,25 @@ export class TemplateController {
 
     const schemaJson = await this.templateService.parseSchemaFromExcel(arrayBuffer);
     const template = await this.templateService.createTemplateFromSchema(name, schemaJson);
+    return {
+      success: true,
+      data: template,
+    };
+  }
+
+  @Put(':id/prompts')
+  async updateTemplatePrompts(
+    @Param('id') id: string,
+    @Body('prompts') prompts: Record<string, string>,
+  ) {
+    if (!prompts || typeof prompts !== 'object') {
+      throw new BadRequestException('prompts must be a valid object');
+    }
+
+    const template = await this.templateService.updateTemplatePrompts(id, prompts);
+    if (!template) {
+      throw new BadRequestException('Template not found');
+    }
     return {
       success: true,
       data: template,

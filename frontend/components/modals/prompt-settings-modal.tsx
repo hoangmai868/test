@@ -8,6 +8,7 @@ import { Loader2, CircleQuestionMark } from "lucide-react"
 import { Textarea } from "@/components/ui/textarea"
 import { buildFieldIdentifier } from "@/lib/field-identifier"
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip"
+import ConfirmSaveToTemplateModal from "./confirm-save-to-template-modal"
 interface PromptField {
   name: string
   prompt?: string
@@ -40,6 +41,9 @@ interface PromptSettingsModalProps {
   handleGenerate: (fieldId: string) => Promise<void>
   handleSave: () => void
   fileNameLookup: Record<string, string>
+  templateId: string | null
+  onLoadFromTemplate: () => Promise<void>
+  onSaveToTemplate: () => Promise<void>
 }
 
 export default function PromptSettingsModal({
@@ -56,11 +60,33 @@ export default function PromptSettingsModal({
   handleGenerate,
   handleSave,
   fileNameLookup,
+  templateId,
+  onLoadFromTemplate,
+  onSaveToTemplate,
 }: PromptSettingsModalProps) {
   const [isPromptTooltipHovered, setIsPromptTooltipHovered] = useState(false)
+  const [isConfirmSaveOpen, setIsConfirmSaveOpen] = useState(false)
+  const [isLoadingFromTemplate, setIsLoadingFromTemplate] = useState(false)
 
   const showPromptTooltip = () => setIsPromptTooltipHovered(true)
   const hidePromptTooltip = () => setIsPromptTooltipHovered(false)
+
+  const handleConfirmSaveToTemplate = async () => {
+    try {
+      await onSaveToTemplate()
+    } finally {
+      setIsConfirmSaveOpen(false)
+    }
+  }
+
+  const handleLoadFromTemplate = async () => {
+    setIsLoadingFromTemplate(true)
+    try {
+      await onLoadFromTemplate()
+    } finally {
+      setIsLoadingFromTemplate(false)
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -215,14 +241,47 @@ export default function PromptSettingsModal({
         </ScrollArea>
 
         <DialogFooter className="pt-4 gap-2 border-t">
-          <Button onClick={() => onOpenChange(false)} variant="outline">
-            キャンセル
-          </Button>
-          <Button onClick={handleSave} className="bg-yellow-500 hover:bg-yellow-600 text-white">
-            保存
-          </Button>
+          <div className="flex w-full justify-between items-center">
+            <div className="flex gap-2">
+              <Button
+                onClick={() => setIsConfirmSaveOpen(true)}
+                variant="outline"
+                disabled={!templateId}
+              >
+                共通プロンプトに反映する
+              </Button>
+              <Button
+                onClick={handleLoadFromTemplate}
+                variant="outline"
+                disabled={!templateId || isLoadingFromTemplate}
+              >
+                {isLoadingFromTemplate ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    読み込み中...
+                  </>
+                ) : (
+                  "共通プロンプトから読み取る"
+                )}
+              </Button>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={() => onOpenChange(false)} variant="outline">
+                キャンセル
+              </Button>
+              <Button onClick={handleSave} className="bg-yellow-500 hover:bg-yellow-600 text-white">
+                保存
+              </Button>
+            </div>
+          </div>
         </DialogFooter>
       </DialogContent>
+
+      <ConfirmSaveToTemplateModal
+        open={isConfirmSaveOpen}
+        onOpenChange={setIsConfirmSaveOpen}
+        onConfirm={handleConfirmSaveToTemplate}
+      />
     </Dialog>
   )
 }

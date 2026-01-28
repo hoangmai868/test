@@ -199,6 +199,47 @@ export class TemplateService {
     });
   }
 
+  async updateTemplatePrompts(id: string, prompts: Record<string, string>) {
+    const template = await this.prisma.template.findUnique({
+      where: { id },
+    });
+
+    if (!template) {
+      return null;
+    }
+
+    const FIELD_IDENTIFIER_SEPARATOR = '||';
+    const schemaJson = template.schemaJson as TemplateGroup[];
+    const updatedSchema = schemaJson.map(group => ({
+      ...group,
+      fields: group.fields.map(field => {
+        const fieldId = `${group.groupName}${FIELD_IDENTIFIER_SEPARATOR}${field.name}`;
+        const prompt = prompts[fieldId] ?? prompts[field.name] ?? field.prompt;
+        return {
+          ...field,
+          prompt,
+        };
+      }),
+    }));
+
+    return this.prisma.template.update({
+      where: { id },
+      data: {
+        schemaJson: updatedSchema,
+      },
+      select: {
+        id: true,
+        fileName: true,
+        displayName: true,
+        fileKey: true,
+        schemaJson: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+  }
+
   private trimmedCellValue(cell: ExcelJS.Cell) {
     if (!cell) {
       return '';
