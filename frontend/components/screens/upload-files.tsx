@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useState, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -31,6 +31,7 @@ interface UploadFilesProps {
 
 export default function UploadFiles({ onNext }: UploadFilesProps) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const {
     uploadedFiles,
     setUploadedFiles,
@@ -44,6 +45,9 @@ export default function UploadFiles({ onNext }: UploadFilesProps) {
     autoSaveJob,
     isUploadingFiles,
   } = useUploadContext()
+
+  // Check if jobId exists in URL
+  const hasJobId = searchParams.get("jobId") !== null
 
   const [dragStates, setDragStates] = useState<{
     customerInfo: boolean
@@ -260,10 +264,12 @@ export default function UploadFiles({ onNext }: UploadFilesProps) {
         )}
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-bold">データ取込</h1>
-          <Button variant="outline" size="sm" onClick={() => router.push("/")}>
-            <Home className="mr-2 h-4 w-4" />
-            TOPへ戻る
-          </Button>
+          {!hasJobId && (
+            <Button variant="outline" size="sm" onClick={() => router.push("/")}>
+              <Home className="mr-2 h-4 w-4" />
+              TOPへ戻る
+            </Button>
+          )}
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
