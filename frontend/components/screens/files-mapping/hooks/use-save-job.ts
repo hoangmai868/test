@@ -135,9 +135,10 @@ export const useSaveJob = ({
                   .map((fileId) => {
                     // If fileId contains slashes, extract the last segment (the actual file name)
                     // Otherwise, use it as-is (it's already just a file name)
-                    const parts = fileId.split('/')
-                    return parts[parts.length - 1]
+                    const parts = fileId.split('/').filter(part => part.length > 0)
+                    return parts[parts.length - 1] || fileId
                   })
+                  .filter((fileName): fileName is string => Boolean(fileName))
               ),
             )
             const fileKeys: string[] = []
