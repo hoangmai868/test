@@ -39,6 +39,8 @@ export default function FilesMappingScreen(props: FilesMappingProps) {
     handleSave,
     handleOpenPromptModal,
     handleConfirmNavigateHome,
+    handleLoadFromTemplate,
+    handleSaveToTemplate,
     isSaving,
     handleSaveJob,
     onBack,
@@ -46,6 +48,7 @@ export default function FilesMappingScreen(props: FilesMappingProps) {
     canProceed,
     jobName,
     user,
+    jobTemplateId,
   } = useFilesMappingLogic(props)
 
   return (
@@ -164,6 +167,9 @@ export default function FilesMappingScreen(props: FilesMappingProps) {
         handleGenerate={handleGenerate}
         handleSave={handleSave}
         fileNameLookup={fileDisplayNameLookup}
+        templateId={jobTemplateId}
+        onLoadFromTemplate={handleLoadFromTemplate}
+        onSaveToTemplate={handleSaveToTemplate}
       />
 
       <ConfirmReturnTopModal

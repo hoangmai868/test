@@ -4,7 +4,7 @@ import { useCallback, type Dispatch, type SetStateAction } from "react"
 import { useRouter } from "next/navigation"
 import { api } from "@/lib/api"
 import { getFieldNameFromIdentifier } from "@/lib/field-identifier"
-import { DisplayFile, getDisplayFileCandidates, mapTemplateToIdentifier, MIN_GENERATING_DURATION_MS } from "../utils"
+import { DisplayFile, getDisplayFileCandidates, mapTemplateToIdentifier, MIN_GENERATING_DURATION_MS, buildPromptsFromFieldGroups, convertSchemaToFieldGroups } from "../utils"
 import type { FieldMappingEntry } from "../utils"
 import type { FilesMappingState } from "./use-files-mapping-state"
 
@@ -276,6 +276,47 @@ export const useFilesMappingHandlers = (state: FilesMappingHandlersState) => {
     setIsConfirmReturnOpen(false)
     router.push("/")
   }, [router, setIsConfirmReturnOpen])
+
+  const handleLoadFromTemplate = useCallback(async () => {
+    const selectedTemplateDetail = templates.find(
+      (template) => mapTemplateToIdentifier(template.fileName) === selectedTemplate,
+    )
+    if (!selectedTemplateDetail) {
+      alert("テンプレートが見つかりません")
+      return
+    }
+
+    try {
+      const template = await api.getTemplate(selectedTemplateDetail.id)
+      const fieldGroups = convertSchemaToFieldGroups(template.schemaJson as any[])
+      const prompts = buildPromptsFromFieldGroups(fieldGroups)
+      
+      // Load prompts into editedPrompts
+      setEditedPrompts(prompts)
+    } catch (error) {
+      console.error("Failed to load prompts from template:", error)
+      alert("共通プロンプトの読み込みに失敗しました")
+    }
+  }, [templates, selectedTemplate, setEditedPrompts])
+
+  const handleSaveToTemplate = useCallback(async () => {
+    const selectedTemplateDetail = templates.find(
+      (template) => mapTemplateToIdentifier(template.fileName) === selectedTemplate,
+    )
+    if (!selectedTemplateDetail) {
+      alert("テンプレートが見つかりません")
+      return
+    }
+
+    try {
+      await api.updateTemplatePrompts(selectedTemplateDetail.id, effectivePrompts)
+      alert("共通プロンプトに反映しました")
+    } catch (error) {
+      console.error("Failed to save prompts to template:", error)
+      alert("共通プロンプトへの反映に失敗しました")
+    }
+  }, [templates, selectedTemplate, effectivePrompts])
+
   return {
     handleTemplateChange,
     handleCheckboxChange,
@@ -285,6 +326,8 @@ export const useFilesMappingHandlers = (state: FilesMappingHandlersState) => {
     handleSave,
     handleOpenPromptModal,
     handleConfirmNavigateHome,
+    handleLoadFromTemplate,
+    handleSaveToTemplate,
   }
 }
 

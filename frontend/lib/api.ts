@@ -117,6 +117,25 @@ export const api = {
     return data.data;
   },
 
+  updateTemplatePrompts: async (templateId: string, prompts: Record<string, string>): Promise<Template> => {
+    const response = await fetch(`${API_BASE_URL}/templates/${templateId}/prompts`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({ prompts }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || 'Failed to update template prompts');
+    }
+
+    return data.data;
+  },
+
   createJob: async (jobData: {
     userId: string;
     templateId: string;

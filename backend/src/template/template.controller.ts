@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   Post,
+  Put,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -76,6 +77,24 @@ export class TemplateController {
 
     const schemaJson = await this.templateService.parseSchemaFromExcel(arrayBuffer);
     const template = await this.templateService.createTemplateFromSchema(name, schemaJson);
+    return {
+      success: true,
+      data: template,
+    };
+  }
+
+  @Put(':id/prompts')
+  async updateTemplatePrompts(
+    @Param('id') id: string,
+    @Body('prompts') prompts: Record<string, string>,
+  ) {
+    const template = await this.templateService.updateTemplatePrompts(id, prompts);
+    if (!template) {
+      return {
+        success: false,
+        message: 'Template not found',
+      };
+    }
     return {
       success: true,
       data: template,
