@@ -555,6 +555,7 @@ export class JobService {
       groupName: group.groupName,
       fields: group.fields.map((field) => ({
         ...field,
+        fileNames: this.remapFieldFileKeys(field.fileNames, fileKeyMap),
         fileKeys: this.remapFieldFileKeys(field.fileKeys, fileKeyMap),
         extractedValue: '',
       })),
