@@ -47,6 +47,7 @@ export const useFilesMappingState = ({
     setPromptEntries,
     editedPrompts,
     setEditedPrompts,
+    deletedFiles,
   } = useUploadContext()
 
   const [selectedTemplate, setSelectedTemplate] = useState("明渡")
@@ -191,12 +192,26 @@ export const useFilesMappingState = ({
     fieldMappings.forEach((mapping) => {
       mappingLookup[mapping.fieldId] = mapping
     })
+    
+    // Create a set of all deleted file names
+    const allDeletedFileNames = new Set<string>()
+    Object.values(deletedFiles).forEach((deletedSet) => {
+      deletedSet.forEach((fileName) => allDeletedFileNames.add(fileName))
+    })
+    
     return Object.entries(mappings).map(([fieldId, selection]) => {
       const existing =
         mappingLookup[fieldId] || mappingLookup[getFieldNameFromIdentifier(fieldId)]
+      
+      // Filter out deleted files from fileIds
+      const fileIds = Object.keys(selection).filter((fileId) => {
+        // Check if this fileId (which could be a file name) is in the deleted set
+        return !allDeletedFileNames.has(fileId)
+      })
+      
       return {
         fieldId,
-        fileIds: Object.keys(selection),
+        fileIds,
         note:
           instructions[fieldId] ||
           instructions[getFieldNameFromIdentifier(fieldId)] ||
@@ -205,7 +220,7 @@ export const useFilesMappingState = ({
         extractedValue: existing?.extractedValue || "",
       }
     })
-  }, [fieldMappings, instructions, mappings])
+  }, [fieldMappings, instructions, mappings, deletedFiles])
 
   const { isSaving, handleSaveJob } = useSaveJob({
     currentFieldGroups,
