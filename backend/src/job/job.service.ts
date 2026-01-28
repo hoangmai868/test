@@ -514,10 +514,28 @@ export class JobService {
       groupName: group.groupName,
       fields: group.fields.map((field) => ({
         ...field,
+        fileNames: this.extractBaseFileNames(field.fileNames),
         fileKeys: this.remapFieldFileKeys(field.fileKeys, fileKeyMap),
         extractedValue: '',
       })),
     }));
+  }
+
+  private extractBaseFileNames(fileNames: string[] | undefined): string[] {
+    if (!Array.isArray(fileNames) || fileNames.length === 0) {
+      return [];
+    }
+
+    return fileNames
+      .map((fileName) => {
+        if (!fileName) {
+          return '';
+        }
+        // Extract just the file name from paths like "jobId/category/fileName"
+        const parts = fileName.split('/');
+        return parts[parts.length - 1];
+      })
+      .filter((name): name is string => name.trim().length > 0);
   }
 
   private remapFieldFileKeys(
