@@ -33,14 +33,14 @@ SET template_json = (
                 WHEN field ? 'fileNames' AND jsonb_typeof(field->'fileNames') = 'array' THEN
                   field || jsonb_build_object(
                     'fileNames', (
-                      SELECT jsonb_agg(extract_filename(filename::text)::jsonb)
+                      SELECT jsonb_agg(to_jsonb(extract_filename(filename::text)))
                       FROM jsonb_array_elements_text(field->'fileNames') AS filename
                     )
                   )
                 WHEN field ? 'fileIds' AND jsonb_typeof(field->'fileIds') = 'array' THEN
                   field || jsonb_build_object(
                     'fileIds', (
-                      SELECT jsonb_agg(extract_filename(fileid::text)::jsonb)
+                      SELECT jsonb_agg(to_jsonb(extract_filename(fileid::text)))
                       FROM jsonb_array_elements_text(field->'fileIds') AS fileid
                     )
                   )
