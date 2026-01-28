@@ -23,7 +23,9 @@ import { BullModule } from '@nestjs/bullmq';
         }
 
         const host = configService.get<string>('REDIS_HOST') || 'localhost';
-        const parsedPort = Number(configService.get<string>('REDIS_PORT') ?? '6379');
+        const parsedPort = Number(
+          configService.get<string>('REDIS_PORT') ?? '6379',
+        );
         const port = Number.isFinite(parsedPort) ? parsedPort : 6379;
         const password = configService.get<string>('REDIS_PASSWORD');
 

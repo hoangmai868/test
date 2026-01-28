@@ -63,14 +63,18 @@ export class PdfPreviewService {
     return null;
   }
 
-  private async determineRotationUsingOpenAi(pageBuffer: Buffer): Promise<number> {
+  private async determineRotationUsingOpenAi(
+    pageBuffer: Buffer,
+  ): Promise<number> {
     const client = this.getOpenAiClient();
     if (!client) {
       return 0;
     }
 
     try {
-      const model = this.azureOpenAiConfig ? this.azureOpenAiConfig.deployment : 'gpt-5.1';
+      const model = this.azureOpenAiConfig
+        ? this.azureOpenAiConfig.deployment
+        : 'gpt-5.1';
       const payload: any[] = [
         {
           role: 'user',
@@ -81,8 +85,7 @@ export class PdfPreviewService {
             },
             {
               type: 'input_text',
-              text:
-                'Detect if this image is rotated and return the degrees to rotate clockwise to make it upright. Allowed values: 0, 90, 180, 270. Respond ONLY with the number.',
+              text: 'Detect if this image is rotated and return the degrees to rotate clockwise to make it upright. Allowed values: 0, 90, 180, 270. Respond ONLY with the number.',
             },
           ],
         },
@@ -95,8 +98,14 @@ export class PdfPreviewService {
       } as any);
 
       // Try output_text first
-      if (typeof response?.output_text === 'string' && response.output_text.trim()) {
-        const val = parseInt(response.output_text.trim().match(/-?\d+/)?.[0] || '0', 10);
+      if (
+        typeof response?.output_text === 'string' &&
+        response.output_text.trim()
+      ) {
+        const val = parseInt(
+          response.output_text.trim().match(/-?\d+/)?.[0] || '0',
+          10,
+        );
         const normalized = [0, 90, 180, 270].includes(val) ? val : 0;
         return normalized;
       }
@@ -105,7 +114,9 @@ export class PdfPreviewService {
       const outputs = Array.isArray(response?.output) ? response.output : [];
 
       const parsed = parseInt(
-        outputs.map((item) => item.toString().match(/-?\d+/)?.[0]).find((val) => val) || '0',
+        outputs
+          .map((item) => item.toString().match(/-?\d+/)?.[0])
+          .find((val) => val) || '0',
         10,
       );
       return [0, 90, 180, 270].includes(parsed) ? parsed : 0;
@@ -126,7 +137,8 @@ export class PdfPreviewService {
     if (!normalizedKey) {
       throw new Error('fileKey is required');
     }
-    const downloadUrl = await this.azureBlobStorage.generateDownloadUrl(normalizedKey);
+    const downloadUrl =
+      await this.azureBlobStorage.generateDownloadUrl(normalizedKey);
     const resp = await fetch(downloadUrl);
     if (!resp.ok) {
       throw new Error('Failed to download PDF from blob storage');
@@ -142,29 +154,47 @@ export class PdfPreviewService {
     try {
       const { pdf } = await import('pdf-to-img');
       const scale = options?.scale ?? 5;
-      const maxPreviewPages = Math.max(0, Math.min(options?.previewPageCount ?? 1000, 1000));
+      const maxPreviewPages = Math.max(
+        0,
+        Math.min(options?.previewPageCount ?? 1000, 1000),
+      );
 
       const document = await pdf(buffer, { scale });
       const pageCount = document.length ?? 0;
       const pagesToRender = Math.min(pageCount, maxPreviewPages);
 
-      const baseName = fileName || path.basename(normalizedKey).replace(/\.[^/.]+$/, '') || 'file';
+      const baseName =
+        fileName ||
+        path.basename(normalizedKey).replace(/\.[^/.]+$/, '') ||
+        'file';
       const uploadedKeys: string[] = [];
 
       // determine rotation once
       if (pagesToRender > 0) {
         try {
           const firstPageBuffer: Buffer = await document.getPage(1);
-          const rotation = await this.determineRotationUsingOpenAi(firstPageBuffer);
+          const rotation =
+            await this.determineRotationUsingOpenAi(firstPageBuffer);
 
-          for (let pageNumber = 1; pageNumber <= pagesToRender; pageNumber += 1) {
+          for (
+            let pageNumber = 1;
+            pageNumber <= pagesToRender;
+            pageNumber += 1
+          ) {
             let pageBuffer: Buffer = await document.getPage(pageNumber);
             if (rotation && rotation % 360 !== 0) {
               try {
-                pageBuffer = await sharp(pageBuffer).rotate(rotation).toBuffer();
-                logJobEventSafe(`Rotated page ${pageNumber} of ${id} by ${rotation} degrees`);
+                pageBuffer = await sharp(pageBuffer)
+                  .rotate(rotation)
+                  .toBuffer();
+                logJobEventSafe(
+                  `Rotated page ${pageNumber} of ${id} by ${rotation} degrees`,
+                );
               } catch (rotateErr) {
-                console.warn('Image rotation failed, uploading original image', rotateErr);
+                console.warn(
+                  'Image rotation failed, uploading original image',
+                  rotateErr,
+                );
               }
             }
 
@@ -186,7 +216,6 @@ export class PdfPreviewService {
           where: { id: id },
           data: { imagesKeys: uploadedKeys },
         });
-
       } catch (updateErr) {
         console.warn('Failed to update jobs_files.images_keys:', updateErr);
       }
