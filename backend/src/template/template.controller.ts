@@ -88,12 +88,13 @@ export class TemplateController {
     @Param('id') id: string,
     @Body('prompts') prompts: Record<string, string>,
   ) {
+    if (!prompts || typeof prompts !== 'object') {
+      throw new BadRequestException('prompts must be a valid object');
+    }
+
     const template = await this.templateService.updateTemplatePrompts(id, prompts);
     if (!template) {
-      return {
-        success: false,
-        message: 'Template not found',
-      };
+      throw new BadRequestException('Template not found');
     }
     return {
       success: true,

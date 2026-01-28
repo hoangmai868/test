@@ -72,8 +72,11 @@ export default function PromptSettingsModal({
   const hidePromptTooltip = () => setIsPromptTooltipHovered(false)
 
   const handleConfirmSaveToTemplate = async () => {
-    setIsConfirmSaveOpen(false)
-    await onSaveToTemplate()
+    try {
+      await onSaveToTemplate()
+    } finally {
+      setIsConfirmSaveOpen(false)
+    }
   }
 
   const handleLoadFromTemplate = async () => {

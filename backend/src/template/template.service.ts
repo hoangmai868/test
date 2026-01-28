@@ -208,11 +208,12 @@ export class TemplateService {
       return null;
     }
 
+    const FIELD_IDENTIFIER_SEPARATOR = '||';
     const schemaJson = template.schemaJson as TemplateGroup[];
     const updatedSchema = schemaJson.map(group => ({
       ...group,
       fields: group.fields.map(field => {
-        const fieldId = `${group.groupName}::${field.name}`;
+        const fieldId = `${group.groupName}${FIELD_IDENTIFIER_SEPARATOR}${field.name}`;
         const prompt = prompts[fieldId] ?? prompts[field.name] ?? field.prompt;
         return {
           ...field,
@@ -225,7 +226,6 @@ export class TemplateService {
       where: { id },
       data: {
         schemaJson: updatedSchema,
-        updatedAt: new Date(),
       },
       select: {
         id: true,
