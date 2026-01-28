@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -8,7 +12,11 @@ import OpenAI from 'openai';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateJobDto } from './dto/create-job.dto';
 import { UpdateJobDto } from './dto/update-job.dto';
-import { JobFile, JobFileCategory, Prisma } from '../../generated/prisma/client';
+import {
+  JobFile,
+  JobFileCategory,
+  Prisma,
+} from '../../generated/prisma/client';
 import { AzureBlobStorageService } from 'src/azure-blob/azure-blob.service';
 import { isTemplateGroup } from 'src/common/types/interface';
 import { RunPromptDto } from './dto/run-prompt.dto';
@@ -90,13 +98,19 @@ export class JobService {
     this.openAiApiKey = process.env.OPENAI_API_KEY || null;
     const parsedBatchSize = Number(process.env.JOB_FIELD_BATCH_SIZE);
     this.jobFieldBatchSize =
-      Number.isFinite(parsedBatchSize) && parsedBatchSize >= 1 ? parsedBatchSize : 5;
+      Number.isFinite(parsedBatchSize) && parsedBatchSize >= 1
+        ? parsedBatchSize
+        : 5;
     const parsedTimeout = Number(process.env.OPENAI_REQUEST_TIMEOUT_MS);
     this.openAiRequestTimeoutMs =
-      Number.isFinite(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : 180_000;
+      Number.isFinite(parsedTimeout) && parsedTimeout > 0
+        ? parsedTimeout
+        : 180_000;
     const parsedRetryDelay = Number(process.env.OPENAI_REQUEST_RETRY_DELAY_MS);
     this.openAiRequestRetryDelayMs =
-      Number.isFinite(parsedRetryDelay) && parsedRetryDelay >= 0 ? parsedRetryDelay : 10_000;
+      Number.isFinite(parsedRetryDelay) && parsedRetryDelay >= 0
+        ? parsedRetryDelay
+        : 10_000;
     const parsedMaxAttempts = Number(process.env.OPENAI_REQUEST_MAX_ATTEMPTS);
     this.openAiRequestMaxAttempts =
       Number.isFinite(parsedMaxAttempts) && parsedMaxAttempts >= 1
@@ -274,7 +288,10 @@ export class JobService {
     });
   }
 
-  async runPrompt(jobId: string, runPromptDto: RunPromptDto): Promise<PromptResult> {
+  async runPrompt(
+    jobId: string,
+    runPromptDto: RunPromptDto,
+  ): Promise<PromptResult> {
     const job = await this.findOne(jobId);
 
     const promptText = (runPromptDto.prompt || '').trim();
@@ -293,20 +310,29 @@ export class JobService {
     const notePlaceholderKeys = ['追加コメント', '登録コメント'];
     const filePlaceholderKeys = ['登録ファイル'];
 
-    const hasFilePlaceholder = this.hasPlaceholder(promptText, filePlaceholderKeys);
-    const hasNotePlaceholder = this.hasPlaceholder(promptText, notePlaceholderKeys);
+    const hasFilePlaceholder = this.hasPlaceholder(
+      promptText,
+      filePlaceholderKeys,
+    );
+    const hasNotePlaceholder = this.hasPlaceholder(
+      promptText,
+      notePlaceholderKeys,
+    );
 
     let promptForInstruction = promptText;
 
     if (note && hasNotePlaceholder) {
-      promptForInstruction = this.replacePlaceholders(promptText, notePlaceholderKeys, note);
+      promptForInstruction = this.replacePlaceholders(
+        promptText,
+        notePlaceholderKeys,
+        note,
+      );
     }
 
     let documents: DocumentContent[] = [];
 
     if (hasFilePlaceholder) {
-      const providedFileKeys =
-      (runPromptDto.fileKeys || [])
+      const providedFileKeys = (runPromptDto.fileKeys || [])
         .map((key) => key.replace(/^\//, ''))
         .filter(Boolean);
 
@@ -314,8 +340,11 @@ export class JobService {
         documents = await this.prepareDocuments(providedFileKeys, job.files);
       }
 
-      promptForInstruction = this.replacePlaceholders(promptForInstruction, filePlaceholderKeys, documents.map((doc) => doc.fileName).join(', '));
-
+      promptForInstruction = this.replacePlaceholders(
+        promptForInstruction,
+        filePlaceholderKeys,
+        documents.map((doc) => doc.fileName).join(', '),
+      );
     }
 
     const hasAiClient = Boolean(this.azureOpenAiConfig || this.openAiApiKey);
@@ -341,7 +370,6 @@ export class JobService {
     };
   }
 
-
   async startJobRun(jobId: string): Promise<void> {
     const job = await this.findOne(jobId);
     if (job.status === 'processing') {
@@ -366,8 +394,13 @@ export class JobService {
     await this.processJobFields(jobId, templateGroups);
   }
 
-  private async processJobFields(jobId: string, templateGroups?: TemplateJsonGroup[]): Promise<void> {
-    const groups = templateGroups ?? this.normalizeTemplateJson((await this.findOne(jobId)).templateJson);
+  private async processJobFields(
+    jobId: string,
+    templateGroups?: TemplateJsonGroup[],
+  ): Promise<void> {
+    const groups =
+      templateGroups ??
+      this.normalizeTemplateJson((await this.findOne(jobId)).templateJson);
     if (groups.length === 0) {
       await this.prisma.job.update({
         where: { id: jobId },
@@ -478,7 +511,12 @@ export class JobService {
       return null;
     }
 
-    const name = typeof field.name === 'string' ? field.name : typeof field.fieldId === 'string' ? field.fieldId : '';
+    const name =
+      typeof field.name === 'string'
+        ? field.name
+        : typeof field.fieldId === 'string'
+          ? field.fieldId
+          : '';
     if (!name) {
       return null;
     }
@@ -489,7 +527,8 @@ export class JobService {
       fileKeys: this.toStringArray(field.fileKeys),
       note: typeof field.note === 'string' ? field.note : '',
       prompt: typeof field.prompt === 'string' ? field.prompt : '',
-      extractedValue: typeof field.extractedValue === 'string' ? field.extractedValue : '',
+      extractedValue:
+        typeof field.extractedValue === 'string' ? field.extractedValue : '',
     };
   }
 
@@ -498,7 +537,9 @@ export class JobService {
       return [];
     }
 
-    return value.filter((item): item is string => typeof item === 'string' && item.trim() !== '');
+    return value.filter(
+      (item): item is string => typeof item === 'string' && item.trim() !== '',
+    );
   }
 
   private buildCopiedTemplateJson(
@@ -541,10 +582,13 @@ export class JobService {
       .filter((mappedKey): mappedKey is string => mappedKey.trim().length > 0);
   }
 
-  private collectFileKeys(field: TemplateJsonField, jobFiles: JobFile[]): string[] {
+  private collectFileKeys(
+    field: TemplateJsonField,
+    jobFiles: JobFile[],
+  ): string[] {
     const normalizedKeys = new Set<string>();
 
-    ;(field.fileKeys || []).forEach((key) => {
+    (field.fileKeys || []).forEach((key) => {
       if (key) {
         normalizedKeys.add(key.replace(/^\//, ''));
       }
@@ -595,10 +639,20 @@ export class JobService {
       const fileName =
         jobFile.fileName || key.split('/').pop() || `blob-${key}`;
 
-      const imageKeys = (jobFile.imagesKeys && jobFile.imagesKeys.length > 0) ? jobFile.imagesKeys : (await this.pdfPreviewService.generatePreview(jobFile.id, key, jobFile.jobId, fileName));
+      const imageKeys =
+        jobFile.imagesKeys && jobFile.imagesKeys.length > 0
+          ? jobFile.imagesKeys
+          : await this.pdfPreviewService.generatePreview(
+              jobFile.id,
+              key,
+              jobFile.jobId,
+              fileName,
+            );
       console.log(`Preview images for file ${key}:`, imageKeys);
-      console.log(`Generated ${imageKeys.length} preview images for file ${key}`);
-      // const assistantFileId = 
+      console.log(
+        `Generated ${imageKeys.length} preview images for file ${key}`,
+      );
+      // const assistantFileId =
       //   jobFile.assistantFileId ??
       //   (await this.uploadAndUpdateAssistantFile(jobFile, key, fileName));
 
@@ -622,8 +676,12 @@ export class JobService {
       throw new BadRequestException('ファイルキーが存在しません');
     }
 
-    const downloadUrl = await this.azureBlobStorage.generateDownloadUrl(blobName);
-    const tempFilePath = await this.downloadBlobToTempFile(downloadUrl, fileName);
+    const downloadUrl =
+      await this.azureBlobStorage.generateDownloadUrl(blobName);
+    const tempFilePath = await this.downloadBlobToTempFile(
+      downloadUrl,
+      fileName,
+    );
     console.log(`Downloaded blob ${blobName} to temp file ${tempFilePath}`);
 
     try {
@@ -667,7 +725,9 @@ export class JobService {
       : path.resolve(process.cwd(), filePath);
 
     if (!fs.existsSync(absolutePath)) {
-      throw new BadRequestException(`ファイルが見つかりません: ${absolutePath}`);
+      throw new BadRequestException(
+        `ファイルが見つかりません: ${absolutePath}`,
+      );
     }
 
     const openAiClient = client ?? this.getOpenAiClient();
@@ -676,7 +736,9 @@ export class JobService {
       purpose: purpose as any,
     });
 
-    console.log(`Uploaded file ${absolutePath} to OpenAI with file ID ${file.id}`);
+    console.log(
+      `Uploaded file ${absolutePath} to OpenAI with file ID ${file.id}`,
+    );
 
     if (!file?.id) {
       throw new BadRequestException('ファイルのアップロードに失敗しました');
@@ -728,7 +790,11 @@ export class JobService {
     return new RegExp(pattern).test(promptText);
   }
 
-  private replacePlaceholders(promptText: string, keys: string[], replacement: string): string {
+  private replacePlaceholders(
+    promptText: string,
+    keys: string[],
+    replacement: string,
+  ): string {
     if (!promptText || !replacement || keys.length === 0) {
       return promptText;
     }
@@ -762,7 +828,7 @@ export class JobService {
 
     console.log(`Calling OpenAI with ${documents.length} documents`);
 
-    return this.processByFileId(documents, instructionText, { }, requestOptions);
+    return this.processByFileId(documents, instructionText, {}, requestOptions);
   }
 
   private async callOpenAiWithRetry(
@@ -773,7 +839,10 @@ export class JobService {
 
     for (let attempt = 1; attempt <= this.openAiRequestMaxAttempts; attempt++) {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), this.openAiRequestTimeoutMs);
+      const timeoutId = setTimeout(
+        () => controller.abort(),
+        this.openAiRequestTimeoutMs,
+      );
 
       try {
         return await this.callOpenAi(instructionText, documents, {
@@ -803,16 +872,18 @@ export class JobService {
     requestOptions?: OpenAiRequestOptions,
   ): Promise<string> {
     const client = this.getOpenAiClient();
-    const model = this.azureOpenAiConfig ? this.azureOpenAiConfig.deployment : 'gpt-5.1';
+    const model = this.azureOpenAiConfig
+      ? this.azureOpenAiConfig.deployment
+      : 'gpt-5.1';
     const payload: any[] = [];
-
 
     payload.push({
       role: 'user',
       content: [
         {
           type: 'input_text',
-          text: instructionText || 'プロンプトに入力された内容を処理してください。',
+          text:
+            instructionText || 'プロンプトに入力された内容を処理してください。',
         },
       ],
     });
@@ -825,7 +896,7 @@ export class JobService {
         input: payload,
         reasoning: {
           effort: 'high',
-        }
+        },
       },
       requestOptions,
     );
@@ -846,7 +917,7 @@ export class JobService {
     //   .filter((d): d is DocumentContent & { assistantFileId: string } => Boolean(d.assistantFileId))
     //   .map((d) => ({ fileId: d.assistantFileId, fileName: d.fileName }));
 
-     // collect image presigned URLs
+    // collect image presigned URLs
     const imageUrls: string[] = [];
     for (const doc of documents) {
       const keys = Array.isArray(doc.imageKeys) ? doc.imageKeys : [];
@@ -854,7 +925,8 @@ export class JobService {
         if (!key) continue;
         const normalized = key.replace(/^\//, '');
         try {
-          const url = await this.azureBlobStorage.generateDownloadUrl(normalized);
+          const url =
+            await this.azureBlobStorage.generateDownloadUrl(normalized);
           imageUrls.push(url);
         } catch {
           // skip failures to generate url for a given image
@@ -866,7 +938,8 @@ export class JobService {
     // }
 
     const client = options.client ?? this.getOpenAiClient();
-    const model = options.model ?? (this.azureOpenAiConfig?.deployment ?? 'gpt-5.1');
+    const model =
+      options.model ?? this.azureOpenAiConfig?.deployment ?? 'gpt-5.1';
     const payload: any[] = [];
 
     const userContent: Array<Record<string, any>> = [];
@@ -904,19 +977,25 @@ export class JobService {
         input: payload,
         reasoning: {
           effort: 'high',
-        }
+        },
       },
       requestOptions,
     );
 
-    if (typeof response?.output_text === 'string' && response.output_text.trim()) {
+    if (
+      typeof response?.output_text === 'string' &&
+      response.output_text.trim()
+    ) {
       return response.output_text.trim();
     }
 
     return this.extractResponseText(response);
   }
 
-  private buildFallbackResponse(prompt: string, documents: DocumentContent[]): string {
+  private buildFallbackResponse(
+    prompt: string,
+    documents: DocumentContent[],
+  ): string {
     const fileList = documents.map((doc) => doc.fileName).join(', ');
 
     return [
@@ -980,6 +1059,7 @@ export class JobService {
       category: JobFileCategory;
       assistantFileId: string | null;
       sourceFileKey: string | null;
+      copiedImageKeys: string[];
     }
 
     const newJobFiles: {
@@ -988,6 +1068,7 @@ export class JobService {
       fileKey: string;
       category: JobFileCategory;
       assistantFileId: string | null;
+      imagesKeys: string[];
     }[] = [];
 
     try {
@@ -1006,12 +1087,43 @@ export class JobService {
             destinationBlobName,
           );
 
+          // Copy image files
+          const copiedImageKeys: string[] = [];
+          if (file.imagesKeys && file.imagesKeys.length > 0) {
+            await Promise.all(
+              file.imagesKeys.map(async (imageKey) => {
+                const sourceImageBlobName = imageKey?.replace(/^\//, '');
+                if (!sourceImageBlobName) {
+                  return;
+                }
+
+                // Extract page number from original path (e.g., "jobId/fileName/page-1.png")
+                const pageMatch = sourceImageBlobName.match(/page-(\d+)\.png$/);
+                if (!pageMatch) {
+                  return;
+                }
+
+                const pageNumber = pageMatch[1];
+                const destinationImageBlobName = `${newJob.id}/${fileName}/page-${pageNumber}.png`;
+
+                await this.azureBlobStorage.copyBlob(
+                  sourceImageBlobName,
+                  destinationImageBlobName,
+                );
+
+                copiedBlobNames.push(destinationImageBlobName);
+                copiedImageKeys.push(`/${destinationImageBlobName}`);
+              }),
+            );
+          }
+
           return {
             fileName,
             destinationBlobName,
             category: file.category,
             assistantFileId: file.assistantFileId ?? null,
             sourceFileKey: file.fileKey ?? null,
+            copiedImageKeys,
           };
         }),
       );
@@ -1029,6 +1141,7 @@ export class JobService {
           fileKey: `/${result.destinationBlobName}`,
           assistantFileId: result.assistantFileId ?? null,
           category: result.category,
+          imagesKeys: result.copiedImageKeys,
         });
 
         if (result.sourceFileKey) {
@@ -1052,10 +1165,10 @@ export class JobService {
       if (updatedTemplateGroups.length > 0) {
         await this.prisma.job.update({
           where: { id: newJob.id },
-        data: {
-          templateJson:
-            updatedTemplateGroups as unknown as Prisma.InputJsonValue,
-        },
+          data: {
+            templateJson:
+              updatedTemplateGroups as unknown as Prisma.InputJsonValue,
+          },
         });
       }
 
@@ -1090,7 +1203,9 @@ export class JobService {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Template Data');
 
-    const templateJson = Array.isArray(job.templateJson) ? job.templateJson  as unknown[]: [];
+    const templateJson = Array.isArray(job.templateJson)
+      ? (job.templateJson as unknown[])
+      : [];
     const groups = templateJson.filter(isTemplateGroup);
 
     if (templateJson.length === 0) {
@@ -1127,7 +1242,7 @@ export class JobService {
           field.extractedValue || '',
         ]);
         currentRow++;
-      };
+      }
 
       const endRow = currentRow - 1;
 
@@ -1153,7 +1268,10 @@ export class JobService {
     return Buffer.from(buffer);
   }
 
-  async deleteFiles(jobId: string, fileKeys: string[]): Promise<{ count: number }> {
+  async deleteFiles(
+    jobId: string,
+    fileKeys: string[],
+  ): Promise<{ count: number }> {
     if (!fileKeys || fileKeys.length === 0) {
       return { count: 0 };
     }

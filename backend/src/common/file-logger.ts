@@ -26,8 +26,12 @@ function formatPayload(payload?: unknown): string {
   }
 }
 
-export async function logJobEvent(label: string, payload?: unknown): Promise<void> {
-  const detail = payload === undefined ? label : `${label}: ${formatPayload(payload)}`;
+export async function logJobEvent(
+  label: string,
+  payload?: unknown,
+): Promise<void> {
+  const detail =
+    payload === undefined ? label : `${label}: ${formatPayload(payload)}`;
   const entry = `${new Date().toISOString()} ${detail}${os.EOL}`;
   await ensureLogDirectory();
   await fs.promises.appendFile(LOG_FILE_PATH, entry);
@@ -38,4 +42,3 @@ export function logJobEventSafe(label: string, payload?: unknown): void {
     console.error('Failed to write job log entry', error);
   });
 }
-
