@@ -226,19 +226,12 @@ export function UploadProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    if (jobId) {
-      clearDraftPromptStorage()
-      return
-    }
     writeDraftRecord(DRAFT_PROMPT_ENTRIES_KEY, promptEntries)
-  }, [jobId, promptEntries])
+  }, [promptEntries])
 
   useEffect(() => {
-    if (jobId) {
-      return
-    }
     writeDraftRecord(DRAFT_EDITED_PROMPTS_KEY, editedPrompts)
-  }, [jobId, editedPrompts])
+  }, [editedPrompts])
 
   const loadJobData = useCallback(async (loadJobId: string) => {
     setDeletedFiles({

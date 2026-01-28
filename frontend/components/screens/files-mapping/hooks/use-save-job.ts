@@ -79,6 +79,7 @@ export const useSaveJob = ({
       try {
         const files: Array<{ fileName: string; fileKey?: string; category: FileCategory }> = []
         const fileKeyMap: Record<string, string | undefined> = {}
+        const fileKeyToNameMap: Record<string, string> = {}
 
         const appendLoadedFiles = (items: FileInfo[] | undefined, category: FileCategory) => {
           items?.forEach((file) => {
@@ -90,6 +91,7 @@ export const useSaveJob = ({
             if (file.fileKey) {
               if (file.name) {
                 fileKeyMap[file.name] = file.fileKey
+                fileKeyToNameMap[file.fileKey] = file.name
               }
               fileKeyMap[file.fileKey] = file.fileKey
             }
@@ -102,6 +104,8 @@ export const useSaveJob = ({
               fileName: file.name,
               category,
             })
+            // For uploaded files, name is the identifier
+            fileKeyToNameMap[file.name] = file.name
           })
         }
 
@@ -127,23 +131,27 @@ export const useSaveJob = ({
               fieldMappings.find((m) => m.fieldId === fieldId) ||
               fieldMappings.find((m) => m.fieldId === legacyFieldName)
 
-            const fileNames = Array.from(
-              new Set(mapping?.fileIds.filter((fileId): fileId is string => Boolean(fileId))),
-            )
+            const fileNames: string[] = []
             const fileKeys: string[] = []
             mapping?.fileIds.forEach((fileId) => {
               const fileKey = fileKeyMap[fileId]
               if (fileKey) {
                 fileKeys.push(fileKey)
               }
+              // Get the actual file name from the reverse map
+              const fileName = fileKeyToNameMap[fileId] || fileId
+              fileNames.push(fileName)
             })
+            // Remove duplicates
+            const uniqueFileNames = Array.from(new Set(fileNames))
+            const uniqueFileKeys = Array.from(new Set(fileKeys))
 
             const promptValue = effectivePrompts[fieldId] || effectivePrompts[legacyFieldName] || ""
 
             return {
               name: field.name,
-              fileNames,
-              fileKeys,
+              fileNames: uniqueFileNames,
+              fileKeys: uniqueFileKeys,
               note: mapping?.note || "",
               extractedValue: mapping?.extractedValue || "",
               prompt: promptValue,
