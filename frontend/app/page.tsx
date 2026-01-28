@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useEffect, Suspense } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
@@ -128,7 +128,7 @@ const transformJobData = (job: any): JobData => {
   }
 }
 
-export default function TopPage() {
+function TopPageContent() {
   const [selectedJob, setSelectedJob] = useState<string | number | null>(null)
   const [activeJobTab, setActiveJobTab] = useState<JobStatus>("draft")
   const [jobs, setJobs] = useState<Record<JobStatus, JobData[]>>({
@@ -140,7 +140,11 @@ export default function TopPage() {
   const [copyingJobId, setCopyingJobId] = useState<string | number | null>(null)
   const [downloadingJobId, setDownloadingJobId] = useState<string | number | null>(null)
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { user } = useAuth()
+
+  // Check if jobId exists in URL
+  const hasJobId = searchParams.get("jobId") !== null
 
   useEffect(() => {
     const fetchJobs = async () => {
@@ -226,10 +230,12 @@ export default function TopPage() {
       <div className="container mx-auto">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold">{""}</h1>
-          <Button onClick={() => router.push("/upload?step=1")}>
-            <Plus className="mr-2 h-4 w-4" />
-            新規アップロード
-          </Button>
+          {!hasJobId && (
+            <Button onClick={() => router.push("/upload?step=1")}>
+              <Plus className="mr-2 h-4 w-4" />
+              新規アップロード
+            </Button>
+          )}
         </div>
         <div className="grid gap-6 md:grid-cols-2">
           <Card>
@@ -461,5 +467,13 @@ export default function TopPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function TopPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-slate-50 p-6 flex items-center justify-center">読み込み中...</div>}>
+      <TopPageContent />
+    </Suspense>
   )
 }
