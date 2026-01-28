@@ -127,8 +127,19 @@ export const useSaveJob = ({
               fieldMappings.find((m) => m.fieldId === fieldId) ||
               fieldMappings.find((m) => m.fieldId === legacyFieldName)
 
+            // Extract just the file name from fileIds (which may contain full paths like "jobId/category/fileName")
             const fileNames = Array.from(
-              new Set(mapping?.fileIds.filter((fileId): fileId is string => Boolean(fileId))),
+              new Set(
+                mapping?.fileIds
+                  .filter((fileId): fileId is string => Boolean(fileId))
+                  .map((fileId) => {
+                    // If fileId contains slashes, extract the last segment (the actual file name)
+                    // Otherwise, use it as-is (it's already just a file name)
+                    const parts = fileId.split('/').filter(part => part.length > 0)
+                    return parts[parts.length - 1] || fileId
+                  })
+                  .filter((fileName): fileName is string => Boolean(fileName))
+              ),
             )
             const fileKeys: string[] = []
             mapping?.fileIds.forEach((fileId) => {
