@@ -42,12 +42,10 @@ export class JobController {
       throw new BadRequestException('fileKey is invalid');
     }
 
-    const downloadUrl = await this.jobService.generateDownloadUrl(
-      blobKey,
-    );
+    const downloadUrl = await this.jobService.generateDownloadUrl(blobKey);
     return { downloadUrl };
   }
-  
+
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() createJobDto: CreateJobDto) {
@@ -136,7 +134,10 @@ export class JobController {
     @Param('jobId') jobId: string,
     @Body() body: { fileKeys: string[] },
   ) {
-    const result = await this.jobService.deleteFiles(jobId, body.fileKeys || []);
+    const result = await this.jobService.deleteFiles(
+      jobId,
+      body.fileKeys || [],
+    );
     return {
       success: true,
       data: result,
@@ -167,19 +168,28 @@ export class JobController {
       const job = await this.jobService.findOne(id);
 
       const now = new Date();
-      const dateStr = [
-        now.getFullYear(),
-        String(now.getMonth() + 1).padStart(2, '0'),
-        String(now.getDate()).padStart(2, '0'),
-      ].join('') + '_' + [
-        String(now.getHours()).padStart(2, '0'),
-        String(now.getMinutes()).padStart(2, '0'),
-        String(now.getSeconds()).padStart(2, '0'),
-      ].join('');
+      const dateStr =
+        [
+          now.getFullYear(),
+          String(now.getMonth() + 1).padStart(2, '0'),
+          String(now.getDate()).padStart(2, '0'),
+        ].join('') +
+        '_' +
+        [
+          String(now.getHours()).padStart(2, '0'),
+          String(now.getMinutes()).padStart(2, '0'),
+          String(now.getSeconds()).padStart(2, '0'),
+        ].join('');
       const fileName = `${job.title || 'job'}_${dateStr}.xlsx`;
-      
-      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
+
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${encodeURIComponent(fileName)}"`,
+      );
       res.send(excelBuffer);
     } catch (error) {
       res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
@@ -190,7 +200,10 @@ export class JobController {
   }
 
   @Post(':jobId/run-prompt')
-  async runPrompt(@Param('jobId') jobId: string, @Body() runPromptDto: RunPromptDto): Promise<{ success: boolean; data?: any; message?: string }> {
+  async runPrompt(
+    @Param('jobId') jobId: string,
+    @Body() runPromptDto: RunPromptDto,
+  ): Promise<{ success: boolean; data?: any; message?: string }> {
     try {
       const result = await this.jobService.runPrompt(jobId, runPromptDto);
       logJobEventSafe('Prompt run result', result);
@@ -201,13 +214,16 @@ export class JobController {
     } catch (error) {
       return {
         success: false,
-        message: error instanceof Error ? error.message : 'Failed to run prompt',
+        message:
+          error instanceof Error ? error.message : 'Failed to run prompt',
       };
     }
   }
 
   @Post(':jobId/run')
-  async runJob(@Param('jobId') jobId: string): Promise<{ success: boolean; data?: any; message?: string }> {
+  async runJob(
+    @Param('jobId') jobId: string,
+  ): Promise<{ success: boolean; data?: any; message?: string }> {
     try {
       await this.jobQueue.add('run-job', { jobId }, { removeOnComplete: true });
       return {
@@ -222,4 +238,3 @@ export class JobController {
     }
   }
 }
-

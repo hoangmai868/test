@@ -57,7 +57,9 @@ export class TemplateController {
   }
 
   @Post('schema/from-excel')
-  @UseInterceptors(FileInterceptor('excel', { storage: multer.memoryStorage() }))
+  @UseInterceptors(
+    FileInterceptor('excel', { storage: multer.memoryStorage() }),
+  )
   async parseTemplateSchema(
     @UploadedFile() file: Express.Multer.File,
     @Body('templateName') templateName: string,
@@ -74,14 +76,15 @@ export class TemplateController {
     const arrayBuffer = new ArrayBuffer(file.buffer.byteLength);
     new Uint8Array(arrayBuffer).set(file.buffer);
 
-    const schemaJson = await this.templateService.parseSchemaFromExcel(arrayBuffer);
-    const template = await this.templateService.createTemplateFromSchema(name, schemaJson);
+    const schemaJson =
+      await this.templateService.parseSchemaFromExcel(arrayBuffer);
+    const template = await this.templateService.createTemplateFromSchema(
+      name,
+      schemaJson,
+    );
     return {
       success: true,
       data: template,
     };
   }
 }
-
-
-
