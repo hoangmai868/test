@@ -1086,6 +1086,9 @@ export class JobService {
             sourceBlobName,
             destinationBlobName,
           );
+          
+          // Track the main file blob for cleanup
+          copiedBlobNames.push(destinationBlobName);
 
           // Copy image files
           const copiedImageKeys: string[] = [];
@@ -1100,6 +1103,9 @@ export class JobService {
                 // Extract page number from original path (e.g., "jobId/fileName/page-1.png")
                 const pageMatch = sourceImageBlobName.match(/page-(\d+)\.png$/);
                 if (!pageMatch) {
+                  console.warn(
+                    `Skipping image with unexpected format: ${sourceImageBlobName}`,
+                  );
                   return;
                 }
 
@@ -1133,8 +1139,6 @@ export class JobService {
       );
 
       successfulCopies.forEach((result) => {
-        copiedBlobNames.push(result.destinationBlobName);
-
         newJobFiles.push({
           jobId: newJob.id,
           fileName: result.fileName,
