@@ -47,6 +47,7 @@ export const useFilesMappingHandlers = (state: FilesMappingHandlersState) => {
     setJobTemplateId,
     onNext,
     canProceed,
+    deletedFiles,
   } = state
   const handleTemplateChange = useCallback(
     (newTemplate: string) => {
@@ -212,7 +213,18 @@ export const useFilesMappingHandlers = (state: FilesMappingHandlersState) => {
           setOutputs((prev) => ({ ...prev, [fieldId]: "" }))
           return
         }
-        const mappedFileIds = mapping?.fileIds || []
+        
+        // Filter out deleted files from mappedFileIds
+        const allDeletedFileNames = new Set<string>()
+        Object.values(deletedFiles).forEach((deletedSet) => {
+          deletedSet.forEach((fileName) => allDeletedFileNames.add(fileName))
+        })
+        
+        const mappedFileIds = (mapping?.fileIds || []).filter((fileId) => {
+          // Check if this fileId (which could be a file name) is in the deleted set
+          return !allDeletedFileNames.has(fileId)
+        })
+        
         const missingKeys = mappedFileIds.filter((fileId) => !fileKeyLookup[fileId])
         if (missingKeys.length > 0) {
           setOutputs((prev) => ({
@@ -254,6 +266,7 @@ export const useFilesMappingHandlers = (state: FilesMappingHandlersState) => {
       instructions,
       jobId,
       fileKeyLookup,
+      deletedFiles,
       startGenerating,
       stopGenerating,
       setOutputs,
