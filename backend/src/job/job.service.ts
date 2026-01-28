@@ -1261,7 +1261,7 @@ export class JobService {
       },
     });
 
-    // Clean up template_json by removing deleted fileKeys and fileNames
+    // Clean up template_json by removing deleted fileKeys, fileNames, and fileIds
     const job = await this.prisma.job.findUnique({
       where: { id: jobId },
       select: { templateJson: true },
@@ -1301,38 +1301,32 @@ export class JobService {
 
       const cleanedField = { ...field };
 
-      // Clean fileKeys array
+      // Clean fileKeys, fileNames, and fileIds arrays (remove corresponding entries)
+      // We need to match by index with fileKeys to remove the right entries
       if (Array.isArray(field.fileKeys)) {
-        cleanedField.fileKeys = field.fileKeys.filter(
-          (key: string) => !deletedKeysSet.has(key),
-        );
-      }
-
-      // Clean fileNames array (remove corresponding entries)
-      // We need to match by index with fileKeys to remove the right fileName
-      if (Array.isArray(field.fileNames) && Array.isArray(field.fileKeys)) {
+        // Compute valid indices BEFORE modifying any arrays
         const validIndices = field.fileKeys
           .map((key: string, index: number) =>
             deletedKeysSet.has(key) ? -1 : index,
           )
           .filter((index: number) => index !== -1);
 
-        cleanedField.fileNames = validIndices.map(
-          (index: number) => field.fileNames[index],
+        // Apply the same index filtering to all three arrays
+        cleanedField.fileKeys = validIndices.map(
+          (index: number) => field.fileKeys[index],
         );
-      }
 
-      // Also clean fileIds if it exists (legacy support)
-      if (Array.isArray(field.fileIds) && Array.isArray(field.fileKeys)) {
-        const validIndices = field.fileKeys
-          .map((key: string, index: number) =>
-            deletedKeysSet.has(key) ? -1 : index,
-          )
-          .filter((index: number) => index !== -1);
+        if (Array.isArray(field.fileNames)) {
+          cleanedField.fileNames = validIndices.map(
+            (index: number) => field.fileNames[index],
+          );
+        }
 
-        cleanedField.fileIds = validIndices.map(
-          (index: number) => field.fileIds[index],
-        );
+        if (Array.isArray(field.fileIds)) {
+          cleanedField.fileIds = validIndices.map(
+            (index: number) => field.fileIds[index],
+          );
+        }
       }
 
       return cleanedField;
