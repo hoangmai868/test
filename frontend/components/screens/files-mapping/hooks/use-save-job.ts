@@ -194,7 +194,7 @@ export const useSaveJob = ({
                     : field.name || ""
                   flatMappings.push({
                     fieldId: normalizedFieldId,
-                    fileIds: field.fileNames || [],
+                    fileIds: field.fileKeys || field.fileNames || [],
                     note: field.note || "",
                     extractedValue: field.extractedValue || "",
                     prompt: field.prompt || "",

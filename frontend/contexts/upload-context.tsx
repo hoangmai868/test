@@ -318,7 +318,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
                     : field.name || ""
                   mappings.push({
                     fieldId: normalizedFieldId,
-                    fileIds: field.fileNames || [],
+                    fileIds: field.fileKeys || field.fileNames || [],
                     note: field.note || "",
                     extractedValue: field.extractedValue || "",
                   })
