@@ -134,13 +134,17 @@ export const useSaveJob = ({
             const fileNames: string[] = []
             const fileKeys: string[] = []
             mapping?.fileIds.forEach((fileId) => {
+              if (!fileId) return // Skip null/undefined values
+              
               const fileKey = fileKeyMap[fileId]
               if (fileKey) {
                 fileKeys.push(fileKey)
               }
               // Get the actual file name from the reverse map
               const fileName = fileKeyToNameMap[fileId] || fileId
-              fileNames.push(fileName)
+              if (fileName) {
+                fileNames.push(fileName)
+              }
             })
             // Remove duplicates
             const uniqueFileNames = Array.from(new Set(fileNames))
