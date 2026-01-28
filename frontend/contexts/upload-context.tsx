@@ -75,7 +75,8 @@ const removeDraftRecord = (storageKey: string) => {
 
 const clearDraftPromptStorage = () => {
   removeDraftRecord(DRAFT_PROMPT_ENTRIES_KEY)
-  removeDraftRecord(DRAFT_EDITED_PROMPTS_KEY)
+  // Note: Don't clear editedPrompts here - they should persist across refreshes
+  // even when a job exists, so unsaved edits aren't lost
 }
 
 interface UploadContextType {
@@ -223,6 +224,8 @@ export function UploadProvider({ children }: { children: ReactNode }) {
     setPromptEntries({})
     setEditedPrompts({})
     clearDraftPromptStorage()
+    // Explicitly clear editedPrompts from sessionStorage since clearDraftPromptStorage() no longer does it
+    removeDraftRecord(DRAFT_EDITED_PROMPTS_KEY)
   }, [])
 
   useEffect(() => {
@@ -234,11 +237,8 @@ export function UploadProvider({ children }: { children: ReactNode }) {
   }, [jobId, promptEntries])
 
   useEffect(() => {
-    if (jobId) {
-      return
-    }
     writeDraftRecord(DRAFT_EDITED_PROMPTS_KEY, editedPrompts)
-  }, [jobId, editedPrompts])
+  }, [editedPrompts])
 
   const loadJobData = useCallback(async (loadJobId: string) => {
     setDeletedFiles({
