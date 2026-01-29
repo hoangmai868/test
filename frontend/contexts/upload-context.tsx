@@ -343,6 +343,7 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         }
         
         setFieldMappings(mappings)
+        setPromptEntries({})
         setEditedPrompts(promptValues)
       }
     } catch (error) {

@@ -221,6 +221,7 @@ export const useSaveJob = ({
             }
 
             setFieldMappings(flatMappings)
+            setPromptEntries({})
             setEditedPrompts(fetchedPromptEntries)
 
             const newMappings: Record<string, Record<string, boolean>> = {}
