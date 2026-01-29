@@ -343,8 +343,8 @@ export function UploadProvider({ children }: { children: ReactNode }) {
         }
         
         setFieldMappings(mappings)
-        setPromptEntries(promptValues)
-        setEditedPrompts({})
+        setPromptEntries({})
+        setEditedPrompts(promptValues)
       }
     } catch (error) {
       console.error("Failed to load job data:", error)
