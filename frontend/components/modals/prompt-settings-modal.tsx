@@ -64,7 +64,10 @@ export default function PromptSettingsModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!w-[90vw] !max-w-none max-h-[90vh] flex flex-col">
+      <DialogContent 
+        className="!w-[90vw] !max-w-none max-h-[90vh] flex flex-col"
+        onPointerDownOutside={(e) => e.preventDefault()}
+      >
         <DialogHeader>
           <div className="flex items-center justify-between pr-10">
             <DialogTitle>プロンプト設定</DialogTitle>
