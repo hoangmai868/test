@@ -1,6 +1,6 @@
-import { Injectable } from "@nestjs/common";
-import { Cron } from "@nestjs/schedule";
-import { PrismaService } from "src/prisma/prisma.service";
+import { Injectable } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
+import { PrismaService } from 'src/prisma/prisma.service';
 @Injectable()
 export class CleanupService {
   constructor(private prisma: PrismaService) {}
@@ -19,5 +19,23 @@ export class CleanupService {
       },
     });
     console.log(`Cleanup complete. Deleted ${result.count} old jobs.`);
+  }
+
+  @Cron('0 0 * * 1', {
+    timeZone: 'Asia/Tokyo',
+  })
+  async weeklyCleanup() {
+    const threeWeeksAgo = new Date();
+    threeWeeksAgo.setDate(threeWeeksAgo.getDate() - 21);
+    const result = await this.prisma.job.deleteMany({
+      where: {
+        createdAt: {
+          lt: threeWeeksAgo,
+        },
+      },
+    });
+    console.log(
+      `Weekly cleanup complete. Deleted ${result.count} jobs older than 3 weeks.`,
+    );
   }
 }

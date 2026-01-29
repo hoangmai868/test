@@ -21,7 +21,3 @@ export class ProfileResponseDto {
   };
   message?: string;
 }
-
-
-
-

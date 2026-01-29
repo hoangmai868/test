@@ -13,7 +13,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         },
       ]),
       ignoreExpiration: false,
-      secretOrKey: process.env.JWT_SECRET || 'your-secret-key-change-in-production',
+      secretOrKey:
+        process.env.JWT_SECRET || 'your-secret-key-change-in-production',
     });
   }
 
@@ -29,4 +30,3 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     return { userId: user.id, userName: user.userName };
   }
 }
-

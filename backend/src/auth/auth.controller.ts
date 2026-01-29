@@ -12,7 +12,11 @@ import {
 } from '@nestjs/common';
 import type { Response, Request } from 'express';
 import { AuthService } from './auth.service';
-import { LoginDto, LoginResponseDto, ProfileResponseDto } from './dto/login.dto';
+import {
+  LoginDto,
+  LoginResponseDto,
+  ProfileResponseDto,
+} from './dto/login.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
 @Controller('auth')
@@ -70,4 +74,3 @@ export class AuthController {
     };
   }
 }
-
