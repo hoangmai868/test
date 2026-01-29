@@ -104,11 +104,12 @@ const transformJobData = (job: any): JobData => {
 
   const totalFiles = uploadedFiles.customerInfo.length + uploadedFiles.contractDocs.length + uploadedFiles.registryDocs.length
   const createdAtDate = job.createdAt ? new Date(job.createdAt) : new Date()
-  const date = createdAtDate.toISOString().split('T')[0]
-  const createdAt = createdAtDate.toLocaleString('ja-JP')
+  const createdAt = createdAtDate.toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })
+  // Extract date in JST timezone
+  const date = createdAtDate.toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit' }).split('/').join('-')
   const templateName = job.template?.displayName || job.template?.fileName || ''
   const completedAtDate = job.completedAt ? new Date(job.completedAt) : null
-  const completedAt = completedAtDate ? completedAtDate.toLocaleString('ja-JP') : ''
+  const completedAt = completedAtDate ? completedAtDate.toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }) : ''
 
   return {
     id: job.id,
