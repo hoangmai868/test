@@ -15,8 +15,12 @@ import { PdfPreviewService } from './pdf-preview.service';
     }),
   ],
   controllers: [JobController],
-  providers: [JobService, AzureBlobStorageService, JobProcessor, PdfPreviewService],
+  providers: [
+    JobService,
+    AzureBlobStorageService,
+    JobProcessor,
+    PdfPreviewService,
+  ],
   exports: [JobService, PdfPreviewService],
 })
 export class JobModule {}
-

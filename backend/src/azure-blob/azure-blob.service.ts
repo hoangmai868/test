@@ -28,8 +28,9 @@ export class AzureBlobStorageService {
   }) {
     const { blobName, contentType } = params;
 
-    const containerClient =
-      this.blobServiceClient.getContainerClient(this.containerName);
+    const containerClient = this.blobServiceClient.getContainerClient(
+      this.containerName,
+    );
 
     const blobClient = containerClient.getBlockBlobClient(blobName);
 
@@ -58,8 +59,9 @@ export class AzureBlobStorageService {
     contentType: string;
   }) {
     const { blobName, buffer, contentType } = params;
-    const containerClient =
-      this.blobServiceClient.getContainerClient(this.containerName);
+    const containerClient = this.blobServiceClient.getContainerClient(
+      this.containerName,
+    );
     const blockBlobClient = containerClient.getBlockBlobClient(blobName);
     await blockBlobClient.uploadData(buffer, {
       blobHTTPHeaders: {
@@ -74,8 +76,9 @@ export class AzureBlobStorageService {
   }
 
   async generateDownloadUrl(blobName: string) {
-    const containerClient =
-      this.blobServiceClient.getContainerClient(this.containerName);
+    const containerClient = this.blobServiceClient.getContainerClient(
+      this.containerName,
+    );
 
     const blobClient = containerClient.getBlobClient(blobName);
     const sasToken = generateBlobSASQueryParameters(
@@ -92,16 +95,18 @@ export class AzureBlobStorageService {
   }
 
   async deleteBlob(blobName: string) {
-    const containerClient =
-      this.blobServiceClient.getContainerClient(this.containerName);
+    const containerClient = this.blobServiceClient.getContainerClient(
+      this.containerName,
+    );
 
     const blobClient = containerClient.getBlobClient(blobName);
     await blobClient.deleteIfExists();
   }
 
   async copyBlob(sourceBlobName: string, destinationBlobName: string) {
-    const containerClient =
-      this.blobServiceClient.getContainerClient(this.containerName);
+    const containerClient = this.blobServiceClient.getContainerClient(
+      this.containerName,
+    );
 
     const sourceBlobClient = containerClient.getBlobClient(sourceBlobName);
     const destinationBlobClient =

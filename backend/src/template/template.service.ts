@@ -56,7 +56,7 @@ export class TemplateService {
 
   async findByFileName(fileName: string) {
     return await this.prisma.template.findFirst({
-      where: { 
+      where: {
         fileName,
         status: 'active',
       },
@@ -83,7 +83,9 @@ export class TemplateService {
     const worksheet = loadedWorkbook.worksheets[0];
 
     if (!worksheet) {
-      throw new BadRequestException('Excel workbook does not contain any sheet');
+      throw new BadRequestException(
+        'Excel workbook does not contain any sheet',
+      );
     }
 
     const schema: TemplateGroup[] = [];
@@ -151,14 +153,17 @@ export class TemplateService {
     return schema;
   }
 
-  async createTemplateFromSchema(templateName: string, schemaJson: TemplateGroup[]) {
+  async createTemplateFromSchema(
+    templateName: string,
+    schemaJson: TemplateGroup[],
+  ) {
     const existing = await this.prisma.template.findFirst({
       where: {
         fileName: templateName,
         status: 'active',
       },
     });
-    
+
     if (existing) {
       return this.prisma.template.update({
         where: { id: existing.id },
@@ -182,7 +187,7 @@ export class TemplateService {
       data: {
         fileName: templateName,
         displayName: templateName,
-        fileKey: "",
+        fileKey: '',
         schemaJson,
         status: 'active',
       },
@@ -224,17 +229,22 @@ export class TemplateService {
     if (typeof value === 'object') {
       if (
         'richText' in value &&
-        Array.isArray((value as { richText?: Array<{ text?: string }> }).richText)
+        Array.isArray(
+          (value as { richText?: Array<{ text?: string }> }).richText,
+        )
       ) {
         return (
-          ((value as { richText?: Array<{ text?: string }> }).richText ?? [])
-            .map((piece) => piece.text ?? '')
-            .join('')
-            .trim()
-        );
+          (value as { richText?: Array<{ text?: string }> }).richText ?? []
+        )
+          .map((piece) => piece.text ?? '')
+          .join('')
+          .trim();
       }
 
-      if ('text' in value && typeof (value as { text?: string }).text === 'string') {
+      if (
+        'text' in value &&
+        typeof (value as { text?: string }).text === 'string'
+      ) {
         return ((value as { text?: string }).text ?? '').trim();
       }
     }
@@ -242,6 +252,3 @@ export class TemplateService {
     return '';
   }
 }
-
-
-
